@@ -2,14 +2,17 @@ import { useState } from 'react';
 import Home from './pages/Home';
 import Practice from './pages/Practice';
 import Admin from './pages/Admin';
+import ResultsPage from "./pages/ResultsPage";
 import './App.css';
 
 export default function App() {
   const [page, setPage] = useState('home');
   const [selectedTopic, setSelectedTopic] = useState('all');
+  const [selectedQuestionId, setSelectedQuestionId] = useState(null);
 
   const navigate = (p, opts = {}) => {
     if (opts.topic) setSelectedTopic(opts.topic);
+    if (opts.questionId !== undefined) setSelectedQuestionId(opts.questionId);
     setPage(p);
   };
 
@@ -27,12 +30,27 @@ export default function App() {
           <button className={`nav-link ${page === 'admin' ? 'active' : ''}`} onClick={() => navigate('admin')}>
             Admin
           </button>
+          <button className={`nav-link ${page === 'results' ? 'active' : ''}`} onClick={() => navigate('results')}>
+            Results
+          </button>
         </div>
       </nav>
 
       <main className="main">
         {page === 'home' && <Home onStart={(topic) => navigate('practice', { topic })} />}
-        {page === 'practice' && <Practice topic={selectedTopic} onBack={() => navigate('home')} />}
+        {page === 'practice' && (
+          <Practice
+            topic={selectedTopic} 
+            id={selectedQuestionId} 
+            onBack={() => navigate('home')} 
+            onNext={() => setSelectedQuestionId(null)}
+            />
+        )}
+        {page === 'results' && (
+          <ResultsPage
+            onViewQuestion={(id, topic) => navigate('practice', { questionId: id, topic })}
+          />
+        )}
         {page === 'admin' && <Admin />}
       </main>
     </div>

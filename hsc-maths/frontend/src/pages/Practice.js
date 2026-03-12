@@ -3,7 +3,7 @@ import './Practice.css';
 
 const API = 'http://localhost:3001';
 
-export default function Practice({ topic, onBack }) {
+export default function Practice({ topic, id, onBack }) {
   const [question, setQuestion] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -12,36 +12,64 @@ export default function Practice({ topic, onBack }) {
   const [sessionStats, setSessionStats] = useState({ correct: 0, incorrect: 0, seen: 0 });
   const [imageZoomed, setImageZoomed] = useState(false);
 
-  const fetchQuestion = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    setShowAnswer(false);
-    setResult(null);
-    setImageZoomed(false);
-    try {
-      const url = topic && topic !== 'all'
-        ? `${API}/api/questions/random?topic=${encodeURIComponent(topic)}`
-        : `${API}/api/questions/random`;
-      const res = await fetch(url);
-      if (!res.ok) throw new Error('No questions available');
-      const data = await res.json();
-      setQuestion(data);
-    } catch (e) {
-      setError(e.message);
-    } finally {
-      setLoading(false);
+const fetchQuestion = useCallback(async () => {
+  setLoading(true);
+  setError(null);
+  setShowAnswer(false);
+  setResult(null);
+  setImageZoomed(false);
+
+  try {
+    let url;
+
+    if (id) {
+      // load specific question (reattempt)
+      url = `${API}/api/questions/${id}`;
+    } else if (topic && topic !== "all") {
+      // random question by topic
+      url = `${API}/api/questions/random?topic=${encodeURIComponent(topic)}`;
+    } else {
+      // random question
+      url = `${API}/api/questions/random`;
     }
-  }, [topic]);
+
+    const res = await fetch(url);
+    if (!res.ok) throw new Error("No questions available");
+
+    const data = await res.json();
+    setQuestion(data);
+
+  } catch (e) {
+    setError(e.message);
+  } finally {
+    setLoading(false);
+  }
+}, [topic, id]);
 
   useEffect(() => { fetchQuestion(); }, [fetchQuestion]);
 
-  const handleMark = (correct) => {
+  const handleMark = async (correct) => {
     setResult(correct ? 'correct' : 'incorrect');
     setSessionStats(s => ({
       correct: s.correct + (correct ? 1 : 0),
       incorrect: s.incorrect + (correct ? 0 : 1),
       seen: s.seen + 1
     }));
+
+    // Save result to database
+    try {
+      await fetch(`${API}/api/results`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          question_id: question.id,
+          topic: question.topic,
+          correct: correct
+        })
+      });
+    } catch (err) {
+      console.error('Failed to save result:', err);
+    }
   };
 
   const topicLabel = topic === 'all' ? 'All Topics' : topic;
