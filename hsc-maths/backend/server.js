@@ -3,46 +3,49 @@ require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
 const multer = require('multer');
-const sql = require('mssql');
+const { Pool } = require('pg');
 const cloudinary = require('cloudinary').v2;
 const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
 
 const app = express();
-const PORT = 3001;
+const PORT = process.env.PORT || 5000;
 const JWT_SECRET = process.env.JWT_SECRET;
 
 app.use(cors());
 app.use(express.json());
 app.use(express.json({ limit: '10mb' }));
 
-// --- Cloudinary config ---
+// ─────────────────────────────────────────────────────────────────────────────
+// Cloudinary config
+// ─────────────────────────────────────────────────────────────────────────────
+
 cloudinary.config({
   cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
   api_key: process.env.CLOUDINARY_API_KEY,
   api_secret: process.env.CLOUDINARY_API_SECRET,
 });
 
-// --- SQL Server connection ---
-const dbConfig = {
-  user: process.env.DB_USER,
-  password: process.env.SA_PASSWORD,
-  server: process.env.DB_SERVER,
-  database: process.env.DB_NAME,
-  options: {
-    trustServerCertificate: true
-  }
-};
+// ─────────────────────────────────────────────────────────────────────────────
+// PostgreSQL connection pool (Supabase)
+// ─────────────────────────────────────────────────────────────────────────────
 
-let pool;
-async function getPool() {
-  if (!pool) {
-    pool = await sql.connect(dbConfig);
-  }
-  return pool;
-}
+const pool = new Pool({
+  connectionString: process.env.DATABASE_URL,
+  // Supabase-specific connection options (optional but recommended)
+  max: 20,
+  idleTimeoutMillis: 30000,
+  connectionTimeoutMillis: 2000,
+});
 
-// --- Multer memory storage ---
+pool.on('error', (err) => {
+  console.error('Unexpected error on idle client', err);
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Multer memory storage
+// ─────────────────────────────────────────────────────────────────────────────
+
 const upload = multer({
   storage: multer.memoryStorage(),
   fileFilter: (req, file, cb) => {
@@ -52,7 +55,10 @@ const upload = multer({
   limits: { fileSize: 10 * 1024 * 1024 }
 });
 
-// --- Cloudinary helpers ---
+// ─────────────────────────────────────────────────────────────────────────────
+// Cloudinary helpers
+// ─────────────────────────────────────────────────────────────────────────────
+
 function uploadToCloudinary(buffer) {
   return new Promise((resolve, reject) => {
     const stream = cloudinary.uploader.upload_stream(
@@ -72,45 +78,51 @@ function getPublicId(url) {
   return `hsc-maths/${file}`;
 }
 
-// --- Auth middleware ---
+// ─────────────────────────────────────────────────────────────────────────────
+// Auth middleware
+// ─────────────────────────────────────────────────────────────────────────────
+
 function requireAuth(req, res, next) {
-  const header = req.headers.authorization;
-  if (!header?.startsWith('Bearer ')) {
-    return res.status(401).json({ error: 'Unauthorised' });
+  const auth = req.headers.authorization;
+  if (!auth || !auth.startsWith('Bearer ')) {
+    return res.status(401).json({ error: 'Unauthorized' });
   }
+
+  const token = auth.slice(7);
   try {
-    const token = header.split(' ')[1];
-    req.user = jwt.verify(token, JWT_SECRET);
+    const decoded = jwt.verify(token, JWT_SECRET);
+    req.user = decoded;
     next();
-  } catch {
-    res.status(401).json({ error: 'Invalid or expired token' });
+  } catch (err) {
+    res.status(401).json({ error: 'Invalid token' });
   }
 }
 
 function requireAdmin(req, res, next) {
   requireAuth(req, res, () => {
     if (req.user.role !== 'admin') {
-      return res.status(403).json({ error: 'Admin only' });
+      return res.status(403).json({ error: 'Admin access required' });
     }
     next();
   });
 }
 
-// HSC Standard 2 topics
+// ─────────────────────────────────────────────────────────────────────────────
+// Topics (hardcoded for now, can be moved to DB later)
+// ─────────────────────────────────────────────────────────────────────────────
+
 const TOPICS = [
   'Algebra',
-  'Measurement',
-  'Financial Mathematics',
-  'Statistical Analysis',
-  'Networks',
-  'Probability',
-  'Linear Relationships',
-  'Non-linear Relationships',
   'Trigonometry',
-  'Simultaneous Linear Equations'
+  'Calculus',
+  'Geometry',
+  'Vectors',
+  'Statistics'
 ];
 
-// ── Auth routes ───────────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────────────
+// AUTH ROUTES
+// ─────────────────────────────────────────────────────────────────────────────
 
 // POST register
 app.post('/api/auth/register', async (req, res) => {
@@ -119,31 +131,17 @@ app.post('/api/auth/register', async (req, res) => {
     if (!email || !password) {
       return res.status(400).json({ error: 'Email and password are required' });
     }
-    if (password.length < 6) {
-      return res.status(400).json({ error: 'Password must be at least 6 characters' });
-    }
-
-    const db = await getPool();
-
-    const existing = await db.request()
-      .input('email', sql.NVarChar, email)
-      .query('SELECT id FROM users WHERE email = @email');
-    if (existing.recordset.length > 0) {
-      return res.status(400).json({ error: 'Email already registered' });
-    }
 
     const password_hash = await bcrypt.hash(password, 10);
 
-    const result = await db.request()
-      .input('email', sql.NVarChar, email)
-      .input('password_hash', sql.NVarChar, password_hash)
-      .query(`
-        INSERT INTO users (email, password_hash)
-        OUTPUT INSERTED.id, INSERTED.email, INSERTED.role
-        VALUES (@email, @password_hash)
-      `);
+    const result = await pool.query(
+      `INSERT INTO users (email, password_hash)
+       VALUES ($1, $2)
+       RETURNING id, email, role`,
+      [email, password_hash]
+    );
 
-    const user = result.recordset[0];
+    const user = result.rows[0];
     const token = jwt.sign(
       { id: user.id, email: user.email, role: user.role },
       JWT_SECRET,
@@ -153,6 +151,9 @@ app.post('/api/auth/register', async (req, res) => {
     res.status(201).json({ token, user: { id: user.id, email: user.email, role: user.role } });
   } catch (err) {
     console.error(err);
+    if (err.code === '23505') { // unique_violation in PostgreSQL
+      return res.status(400).json({ error: 'Email already in use' });
+    }
     res.status(500).json({ error: 'Server error' });
   }
 });
@@ -165,16 +166,13 @@ app.post('/api/auth/login', async (req, res) => {
       return res.status(400).json({ error: 'Email and password are required' });
     }
 
-    const db = await getPool();
-    const result = await db.request()
-      .input('email', sql.NVarChar, email)
-      .query('SELECT * FROM users WHERE email = @email');
+    const result = await pool.query('SELECT * FROM users WHERE email = $1', [email]);
 
-    if (result.recordset.length === 0) {
+    if (result.rows.length === 0) {
       return res.status(401).json({ error: 'Invalid email or password' });
     }
 
-    const user = result.recordset[0];
+    const user = result.rows[0];
     const valid = await bcrypt.compare(password, user.password_hash);
     if (!valid) {
       return res.status(401).json({ error: 'Invalid email or password' });
@@ -196,43 +194,48 @@ app.post('/api/auth/login', async (req, res) => {
 // GET current user
 app.get('/api/auth/me', requireAuth, async (req, res) => {
   try {
-    const db = await getPool();
-    const result = await db.request()
-      .input('id', sql.Int, req.user.id)
-      .query('SELECT id, email, role, created_at FROM users WHERE id = @id');
+    const result = await pool.query(
+      'SELECT id, email, role, created_at FROM users WHERE id = $1',
+      [req.user.id]
+    );
 
-    if (result.recordset.length === 0) {
+    if (result.rows.length === 0) {
       return res.status(404).json({ error: 'User not found' });
     }
-    res.json(result.recordset[0]);
+    res.json(result.rows[0]);
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Server error' });
   }
 });
 
-// ── Topic routes ──────────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────────────
+// TOPIC ROUTES
+// ─────────────────────────────────────────────────────────────────────────────
 
 app.get('/api/topics', (req, res) => {
   res.json(TOPICS);
 });
 
-// ── Question routes ───────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────────────
+// QUESTION ROUTES
+// ─────────────────────────────────────────────────────────────────────────────
 
 app.get('/api/questions', requireAuth, async (req, res) => {
   try {
     const { topic } = req.query;
-    const db = await getPool();
 
+    let result;
     if (topic && topic !== 'all') {
-      const result = await db.request()
-        .input('topic', sql.NVarChar, topic)
-        .query('SELECT * FROM questions WHERE topic = @topic ORDER BY created_at DESC');
-      return res.json(result.recordset);
+      result = await pool.query(
+        'SELECT * FROM questions WHERE topic = $1 ORDER BY created_at DESC',
+        [topic]
+      );
+    } else {
+      result = await pool.query('SELECT * FROM questions ORDER BY created_at DESC');
     }
 
-    const result = await db.request().query('SELECT * FROM questions ORDER BY created_at DESC');
-    res.json(result.recordset);
+    res.json(result.rows);
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Database error' });
@@ -242,23 +245,21 @@ app.get('/api/questions', requireAuth, async (req, res) => {
 app.get('/api/questions/random', requireAuth, async (req, res) => {
   try {
     const { topic } = req.query;
-    const db = await getPool();
 
+    let result;
     if (topic && topic !== 'all') {
-      const result = await db.request()
-        .input('topic', sql.NVarChar, topic)
-        .query('SELECT TOP 1 * FROM questions WHERE topic = @topic ORDER BY NEWID()');
-      if (result.recordset.length === 0) {
-        return res.status(404).json({ error: 'No questions found for this topic' });
-      }
-      return res.json(result.recordset[0]);
+      result = await pool.query(
+        'SELECT * FROM questions WHERE topic = $1 ORDER BY RANDOM() LIMIT 1',
+        [topic]
+      );
+    } else {
+      result = await pool.query('SELECT * FROM questions ORDER BY RANDOM() LIMIT 1');
     }
 
-    const result = await db.request().query('SELECT TOP 1 * FROM questions ORDER BY NEWID()');
-    if (result.recordset.length === 0) {
+    if (result.rows.length === 0) {
       return res.status(404).json({ error: 'No questions found' });
     }
-    res.json(result.recordset[0]);
+    res.json(result.rows[0]);
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Database error' });
@@ -267,15 +268,12 @@ app.get('/api/questions/random', requireAuth, async (req, res) => {
 
 app.get('/api/questions/:id', requireAuth, async (req, res) => {
   try {
-    const db = await getPool();
-    const result = await db.request()
-      .input('id', sql.Int, req.params.id)
-      .query('SELECT * FROM questions WHERE id = @id');
+    const result = await pool.query('SELECT * FROM questions WHERE id = $1', [req.params.id]);
 
-    if (result.recordset.length === 0) {
+    if (result.rows.length === 0) {
       return res.status(404).json({ error: 'Not found' });
     }
-    res.json(result.recordset[0]);
+    res.json(result.rows[0]);
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Database error' });
@@ -301,20 +299,14 @@ app.post('/api/questions', requireAdmin, upload.fields([
       ? await uploadToCloudinary(req.files.answer_image[0].buffer)
       : null;
 
-    const db = await getPool();
-    const result = await db.request()
-      .input('topic', sql.NVarChar, topic)
-      .input('source', sql.NVarChar, source || '')
-      .input('marks', sql.Int, marks ? parseInt(marks) : null)
-      .input('question_image', sql.NVarChar, question_image)
-      .input('answer_image', sql.NVarChar, answer_image)
-      .query(`
-        INSERT INTO questions (topic, source, marks, question_image, answer_image)
-        OUTPUT INSERTED.*
-        VALUES (@topic, @source, @marks, @question_image, @answer_image)
-      `);
+    const result = await pool.query(
+      `INSERT INTO questions (topic, source, marks, question_image, answer_image)
+       VALUES ($1, $2, $3, $4, $5)
+       RETURNING *`,
+      [topic, source || '', marks ? parseInt(marks) : null, question_image, answer_image]
+    );
 
-    res.status(201).json(result.recordset[0]);
+    res.status(201).json(result.rows[0]);
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Database error' });
@@ -323,25 +315,19 @@ app.post('/api/questions', requireAdmin, upload.fields([
 
 app.delete('/api/questions/:id', requireAdmin, async (req, res) => {
   try {
-    const db = await getPool();
+    const result = await pool.query('SELECT * FROM questions WHERE id = $1', [req.params.id]);
 
-    const found = await db.request()
-      .input('id', sql.Int, req.params.id)
-      .query('SELECT * FROM questions WHERE id = @id');
-
-    if (found.recordset.length === 0) {
+    if (result.rows.length === 0) {
       return res.status(404).json({ error: 'Not found' });
     }
 
-    const q = found.recordset[0];
+    const q = result.rows[0];
 
     [q.question_image, q.answer_image].forEach(url => {
       if (url) cloudinary.uploader.destroy(getPublicId(url));
     });
 
-    await db.request()
-      .input('id', sql.Int, req.params.id)
-      .query('DELETE FROM questions WHERE id = @id');
+    await pool.query('DELETE FROM questions WHERE id = $1', [req.params.id]);
 
     res.json({ success: true });
   } catch (err) {
@@ -350,7 +336,9 @@ app.delete('/api/questions/:id', requireAdmin, async (req, res) => {
   }
 });
 
-// ── Results routes ────────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────────────
+// RESULTS ROUTES
+// ─────────────────────────────────────────────────────────────────────────────
 
 app.post('/api/results', requireAuth, async (req, res) => {
   try {
@@ -359,16 +347,11 @@ app.post('/api/results', requireAuth, async (req, res) => {
       return res.status(400).json({ error: 'question_id, topic and correct are required' });
     }
 
-    const db = await getPool();
-    await db.request()
-      .input('user_id', sql.Int, req.user.id)
-      .input('question_id', sql.Int, question_id)
-      .input('topic', sql.NVarChar, topic)
-      .input('correct', sql.Bit, correct ? 1 : 0)
-      .query(`
-        INSERT INTO results (user_id, question_id, topic, correct)
-        VALUES (@user_id, @question_id, @topic, @correct)
-      `);
+    await pool.query(
+      `INSERT INTO results (user_id, question_id, topic, correct)
+       VALUES ($1, $2, $3, $4)`,
+      [req.user.id, question_id, topic, correct ? true : false]
+    );
 
     res.status(201).json({ success: true });
   } catch (err) {
@@ -379,23 +362,21 @@ app.post('/api/results', requireAuth, async (req, res) => {
 
 app.get('/api/progress', requireAuth, async (req, res) => {
   try {
-    const db = await getPool();
-    const result = await db.request()
-      .input('user_id', sql.Int, req.user.id)
-      .query(`
-        SELECT 
-          topic,
-          COUNT(*) as total,
-          SUM(CAST(correct AS INT)) as correct,
-          COUNT(*) - SUM(CAST(correct AS INT)) as incorrect,
-          ROUND(100.0 * SUM(CAST(correct AS INT)) / COUNT(*), 1) as percentage
-        FROM results
-        WHERE user_id = @user_id
-        GROUP BY topic
-        ORDER BY percentage ASC
-      `);
+    const result = await pool.query(
+      `SELECT 
+        topic,
+        COUNT(*) as total,
+        SUM(CASE WHEN correct THEN 1 ELSE 0 END) as correct,
+        COUNT(*) - SUM(CASE WHEN correct THEN 1 ELSE 0 END) as incorrect,
+        ROUND(100.0 * SUM(CASE WHEN correct THEN 1 ELSE 0 END) / COUNT(*), 1) as percentage
+       FROM results
+       WHERE user_id = $1
+       GROUP BY topic
+       ORDER BY percentage ASC`,
+      [req.user.id]
+    );
 
-    res.json(result.recordset);
+    res.json(result.rows);
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Database error' });
@@ -404,59 +385,72 @@ app.get('/api/progress', requireAuth, async (req, res) => {
 
 app.get('/api/results', requireAuth, async (req, res) => {
   try {
-    const db = await getPool();
-    const result = await db.request()
-      .input('user_id', sql.Int, req.user.id)
-      .query(`
-        SELECT 
-          r.id,
-          r.question_id,
-          r.topic,
-          r.correct,
-          r.answered_at,
-          q.source
-        FROM results r
-        LEFT JOIN questions q ON r.question_id = q.id
-        WHERE r.user_id = @user_id
-        ORDER BY r.answered_at DESC
-      `);
+    const result = await pool.query(
+      `SELECT 
+        r.id,
+        r.question_id,
+        r.topic,
+        r.correct,
+        r.answered_at,
+        q.source
+       FROM results r
+       LEFT JOIN questions q ON r.question_id = q.id
+       WHERE r.user_id = $1
+       ORDER BY r.answered_at DESC`,
+      [req.user.id]
+    );
 
-    res.json(result.recordset);
+    res.json(result.rows);
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Database error' });
   }
 });
 
-// ── Admin routes ──────────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────────────
+// ADMIN ROUTES
+// ─────────────────────────────────────────────────────────────────────────────
 
 // GET all students + their stats
 app.get('/api/admin/students', requireAdmin, async (req, res) => {
   try {
-    const db = await getPool();
-    const result = await db.request().query(`
-      SELECT 
+    const result = await pool.query(
+      `SELECT 
         u.id,
         u.email,
         u.created_at,
         COUNT(r.id) as total_attempts,
-        SUM(CAST(r.correct AS INT)) as correct,
+        SUM(CASE WHEN r.correct THEN 1 ELSE 0 END) as correct,
         CASE WHEN COUNT(r.id) > 0 
-          THEN ROUND(100.0 * SUM(CAST(r.correct AS INT)) / COUNT(r.id), 1)
+          THEN ROUND(100.0 * SUM(CASE WHEN r.correct THEN 1 ELSE 0 END) / COUNT(r.id), 1)
           ELSE 0 
         END as accuracy
-      FROM users u
-      LEFT JOIN results r ON u.id = r.user_id
-      WHERE u.role = 'student'
-      GROUP BY u.id, u.email, u.created_at
-      ORDER BY u.created_at DESC
-    `);
+       FROM users u
+       LEFT JOIN results r ON u.id = r.user_id
+       WHERE u.role = 'student'
+       GROUP BY u.id, u.email, u.created_at
+       ORDER BY u.created_at DESC`
+    );
 
-    res.json(result.recordset);
+    res.json(result.rows);
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Database error' });
   }
 });
 
-app.listen(PORT, () => console.log(`HSC Maths API running on http://localhost:${PORT}`));
+// ─────────────────────────────────────────────────────────────────────────────
+// Server start
+// ─────────────────────────────────────────────────────────────────────────────
+
+app.listen(PORT, () => {
+  console.log(`HSC Maths API running on port ${PORT}`);
+  console.log(`Using PostgreSQL via ${process.env.DATABASE_URL ? 'DATABASE_URL' : 'manual config'}`);
+});
+
+// Graceful shutdown
+process.on('SIGINT', async () => {
+  console.log('Shutting down gracefully...');
+  await pool.end();
+  process.exit(0);
+});
