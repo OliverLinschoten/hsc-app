@@ -1,7 +1,6 @@
 import { useState, useEffect } from 'react';
 import './Home.css';
-
-const API = 'http://localhost:3001';
+import { authFetch } from '../api';
 
 export default function Home({ onStart }) {
   const [topics, setTopics] = useState([]);
@@ -11,8 +10,8 @@ export default function Home({ onStart }) {
 
   useEffect(() => {
     Promise.all([
-      fetch(`${API}/api/topics`).then(r => r.json()),
-      fetch(`${API}/api/questions`).then(r => r.json())
+      authFetch('/api/topics').then(r => r.json()),
+      authFetch('/api/questions').then(r => r.json())
     ]).then(([topicList, questions]) => {
       setTopics(topicList);
       const c = { all: questions.length };

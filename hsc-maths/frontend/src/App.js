@@ -2,10 +2,13 @@ import { useState } from 'react';
 import Home from './pages/Home';
 import Practice from './pages/Practice';
 import Admin from './pages/Admin';
-import ResultsPage from "./pages/ResultsPage";
+import Results from './pages/Results';
+import Auth from './pages/Auth';
+import { useAuth } from './AuthContext';
 import './App.css';
 
 export default function App() {
+  const { user, logout } = useAuth();
   const [page, setPage] = useState('home');
   const [selectedTopic, setSelectedTopic] = useState('all');
   const [selectedQuestionId, setSelectedQuestionId] = useState(null);
@@ -15,6 +18,9 @@ export default function App() {
     if (opts.questionId !== undefined) setSelectedQuestionId(opts.questionId);
     setPage(p);
   };
+
+  // Not logged in — show auth page
+  if (!user) return < Auth />;
 
   return (
     <div className="app">
@@ -27,11 +33,16 @@ export default function App() {
           <button className={`nav-link ${page === 'home' ? 'active' : ''}`} onClick={() => navigate('home')}>
             Practice
           </button>
-          <button className={`nav-link ${page === 'admin' ? 'active' : ''}`} onClick={() => navigate('admin')}>
-            Admin
-          </button>
           <button className={`nav-link ${page === 'results' ? 'active' : ''}`} onClick={() => navigate('results')}>
             Results
+          </button>
+          {user.role === 'admin' && (
+            <button className={`nav-link ${page === 'admin' ? 'active' : ''}`} onClick={() => navigate('admin')}>
+              Admin
+            </button>
+          )}
+          <button className="nav-link nav-link--logout" onClick={logout}>
+            Sign out
           </button>
         </div>
       </nav>
@@ -40,18 +51,18 @@ export default function App() {
         {page === 'home' && <Home onStart={(topic) => navigate('practice', { topic })} />}
         {page === 'practice' && (
           <Practice
-            topic={selectedTopic} 
-            id={selectedQuestionId} 
-            onBack={() => navigate('home')} 
+            topic={selectedTopic}
+            id={selectedQuestionId}
+            onBack={() => navigate('home')}
             onNext={() => setSelectedQuestionId(null)}
-            />
+          />
         )}
         {page === 'results' && (
-          <ResultsPage
+          <Results
             onViewQuestion={(id, topic) => navigate('practice', { questionId: id, topic })}
           />
         )}
-        {page === 'admin' && <Admin />}
+        {page === 'admin' && user.role === 'admin' && <Admin />}
       </main>
     </div>
   );

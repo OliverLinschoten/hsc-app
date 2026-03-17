@@ -1,7 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import './Admin.css';
-
-const API = 'http://localhost:3001';
+import { authFetch } from '../api';
 
 export default function Admin() {
   const [topics, setTopics] = useState([]);
@@ -25,13 +24,13 @@ export default function Admin() {
   const aRef = useRef();
 
   useEffect(() => {
-    fetch(`${API}/api/topics`).then(r => r.json()).then(setTopics);
+    authFetch('/api/topics').then(r => r.json()).then(setTopics);
     loadQuestions();
   }, []);
 
   async function loadQuestions() {
     setLoading(true);
-    const res = await fetch(`${API}/api/questions`);
+    const res = await authFetch('/api/questions');
     const data = await res.json();
     setQuestions(data);
     setLoading(false);
@@ -55,6 +54,7 @@ export default function Admin() {
     }
     setUploading(true);
     setMessage(null);
+
     const fd = new FormData();
     fd.append('topic', form.topic);
     fd.append('source', form.source);
@@ -63,7 +63,7 @@ export default function Admin() {
     if (form.answer_image) fd.append('answer_image', form.answer_image);
 
     try {
-      const res = await fetch(`${API}/api/questions`, { method: 'POST', body: fd });
+      const res = await authFetch('/api/questions', { method: 'POST', body: fd, headers: {} });
       if (!res.ok) throw new Error('Upload failed');
       setMessage({ type: 'success', text: 'Question uploaded successfully!' });
       setForm({ topic: '', source: '', marks: '', question_image: null, answer_image: null });
@@ -81,7 +81,7 @@ export default function Admin() {
 
   async function handleDelete(id) {
     if (!window.confirm('Delete this question?')) return;
-    await fetch(`${API}/api/questions/${id}`, { method: 'DELETE' });
+    await authFetch(`/api/questions/${id}`, { method: 'DELETE' });
     loadQuestions();
   }
 
@@ -204,7 +204,7 @@ export default function Admin() {
               {filtered.map(q => (
                 <div key={q.id} className="question-row">
                   <img
-                    src={`${API}${q.question_image}`}
+                    src={q.question_image}
                     alt="Q"
                     className="row-thumb"
                   />

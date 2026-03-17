@@ -3,14 +3,13 @@ import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
   PieChart, Pie, Cell, Legend,
 } from "recharts";
-import "./ResultsPage.css";
+import "./Results.css";
+import { authFetch } from '../api';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-const API_BASE = process.env.REACT_APP_API_URL || "http://localhost:3001";
-
 async function fetchResults() {
-  const res = await fetch(`${API_BASE}/api/results`);
+  const res = await authFetch('/api/results');
   if (!res.ok) throw new Error("Failed to fetch results");
   return res.json();
 }
@@ -29,7 +28,6 @@ function computeTopicStats(results) {
   }));
 }
 
-const ACCENT = "var(--accent)";
 const RED = "#f87171";
 const GREEN = "#4ade80";
 const YELLOW = "#facc15";
@@ -114,6 +112,8 @@ function CustomTooltipPie({ active, payload }) {
 
 // ── Main Page ─────────────────────────────────────────────────────────────────
 
+const PAGE_SIZE = 10;
+
 export default function ResultsPage({ onViewQuestion }) {
   const [results, setResults] = useState([]);
   const [topicStats, setTopicStats] = useState([]);
@@ -121,6 +121,7 @@ export default function ResultsPage({ onViewQuestion }) {
   const [error, setError] = useState(null);
   const [tableFilter, setTableFilter] = useState("all");
   const [sortKey, setSortKey] = useState("answered_at");
+  const [page, setPage] = useState(1);
 
   useEffect(() => {
     fetchResults()
@@ -135,7 +136,11 @@ export default function ResultsPage({ onViewQuestion }) {
   const total = results.length;
   const correct = results.filter((r) => r.correct).length;
   const accuracy = total ? Math.round((correct / total) * 100) : 0;
-  const bestTopic = [...topicStats].sort((a, b) => b.accuracy - a.accuracy)[0];
+
+  const handleFilterChange = (f) => {
+    setTableFilter(f);
+    setPage(1);
+  };
 
   const filteredResults = results
     .filter((r) => {
@@ -149,6 +154,9 @@ export default function ResultsPage({ onViewQuestion }) {
       if (sortKey === "correct") return b.correct - a.correct;
       return 0;
     });
+
+  const totalPages = Math.ceil(filteredResults.length / PAGE_SIZE);
+  const pagedResults = filteredResults.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
 
   const pieData = [
     { name: "Correct", value: correct, color: GREEN },
@@ -277,7 +285,7 @@ export default function ResultsPage({ onViewQuestion }) {
                 <button
                   key={f}
                   className={`filter-btn ${tableFilter === f ? "active" : ""}`}
-                  onClick={() => setTableFilter(f)}
+                  onClick={() => handleFilterChange(f)}
                 >
                   {f}
                 </button>
@@ -285,7 +293,7 @@ export default function ResultsPage({ onViewQuestion }) {
               <select
                 className="sort-select"
                 value={sortKey}
-                onChange={(e) => setSortKey(e.target.value)}
+                onChange={(e) => { setSortKey(e.target.value); setPage(1); }}
               >
                 <option value="answered_at">Date</option>
                 <option value="topic">Topic</option>
@@ -296,34 +304,58 @@ export default function ResultsPage({ onViewQuestion }) {
             {filteredResults.length === 0 ? (
               <div className="table-empty">No results to show.</div>
             ) : (
-              <table className="results-table">
-                <thead>
-                  <tr>
-                    <th>#</th>
-                    <th>Topic</th>
-                    <th>Question</th>
-                    <th>Result</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {filteredResults.map((r, i) => (
-                    <tr key={r.id}>
-                      <td className="td-id">{i + 1}</td>
-                      <td className="td-topic">{r.topic}</td>
-                      <td className="td-question">
-                        <button onClick={() => onViewQuestion(r.question_id, r.topic)}>
-                          {r.source || `Q#${r.question_id}`}
-                        </button>
-                      </td>
-                      <td>
-                        <span className={`badge badge--${r.correct ? "correct" : "incorrect"}`}>
-                          {r.correct ? "✓ got it" : "✗ missed"}
-                        </span>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+              <>
+                <div className="table-wrap">
+                  <table className="results-table">
+                    <thead>
+                      <tr>
+                        <th>#</th>
+                        <th>Topic</th>
+                        <th>Question</th>
+                        <th>Result</th>
+                        <th>Date</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {pagedResults.map((r, i) => (
+                        <tr key={r.id}>
+                          <td className="td-id">{(page - 1) * PAGE_SIZE + i + 1}</td>
+                          <td className="td-topic">{r.topic}</td>
+                          <td className="td-question">
+                            <button className="question-link-btn" onClick={() => onViewQuestion(r.question_id, r.topic)}>
+                              {r.source || `Q#${r.question_id}`}
+                            </button>
+                          </td>
+                          <td>
+                            <span className={`badge badge--${r.correct ? "correct" : "incorrect"}`}>
+                              {r.correct ? "✓ got it" : "✗ missed"}
+                            </span>
+                          </td>
+                          <td>{new Date(r.answered_at).toLocaleDateString()}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+
+                {totalPages > 1 && (
+                  <div className="pagination">
+                    <button className="page-btn" onClick={() => setPage(p => p - 1)} disabled={page === 1}>←</button>
+
+                    {Array.from({ length: totalPages }, (_, i) => i + 1).map((p) => (
+                      <button
+                        key={p}
+                        className={`page-btn ${p === page ? "page-btn--active" : ""}`}
+                        onClick={() => setPage(p)}
+                      >
+                        {p}
+                      </button>
+                    ))}
+
+                    <button className="page-btn" onClick={() => setPage(p => p + 1)} disabled={page === totalPages}>→</button>
+                  </div>
+                )}
+              </>
             )}
           </div>
         </>

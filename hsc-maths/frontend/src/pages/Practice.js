@@ -1,50 +1,45 @@
 import { useState, useEffect, useCallback } from 'react';
 import './Practice.css';
+import { authFetch } from '../api';
 
-const API = 'http://localhost:3001';
-
-export default function Practice({ topic, id, onBack }) {
+export default function Practice({ topic, id, onBack, onNext }) {
   const [question, setQuestion] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [showAnswer, setShowAnswer] = useState(false);
-  const [result, setResult] = useState(null); // 'correct' | 'incorrect'
+  const [result, setResult] = useState(null);
   const [sessionStats, setSessionStats] = useState({ correct: 0, incorrect: 0, seen: 0 });
   const [imageZoomed, setImageZoomed] = useState(false);
 
-const fetchQuestion = useCallback(async () => {
-  setLoading(true);
-  setError(null);
-  setShowAnswer(false);
-  setResult(null);
-  setImageZoomed(false);
+  const fetchQuestion = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    setShowAnswer(false);
+    setResult(null);
+    setImageZoomed(false);
 
-  try {
-    let url;
+    try {
+      let url;
 
-    if (id) {
-      // load specific question (reattempt)
-      url = `${API}/api/questions/${id}`;
-    } else if (topic && topic !== "all") {
-      // random question by topic
-      url = `${API}/api/questions/random?topic=${encodeURIComponent(topic)}`;
-    } else {
-      // random question
-      url = `${API}/api/questions/random`;
+      if (id) {
+        url = `/api/questions/${id}`;
+      } else if (topic && topic !== 'all') {
+        url = `/api/questions/random?topic=${encodeURIComponent(topic)}`;
+      } else {
+        url = `/api/questions/random`;
+      }
+
+      const res = await authFetch(url);
+      if (!res.ok) throw new Error('No questions available');
+
+      const data = await res.json();
+      setQuestion(data);
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setLoading(false);
     }
-
-    const res = await fetch(url);
-    if (!res.ok) throw new Error("No questions available");
-
-    const data = await res.json();
-    setQuestion(data);
-
-  } catch (e) {
-    setError(e.message);
-  } finally {
-    setLoading(false);
-  }
-}, [topic, id]);
+  }, [topic, id]);
 
   useEffect(() => { fetchQuestion(); }, [fetchQuestion]);
 
@@ -56,11 +51,9 @@ const fetchQuestion = useCallback(async () => {
       seen: s.seen + 1
     }));
 
-    // Save result to database
     try {
-      await fetch(`${API}/api/results`, {
+      await authFetch('/api/results', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           question_id: question.id,
           topic: question.topic,
@@ -76,7 +69,6 @@ const fetchQuestion = useCallback(async () => {
 
   return (
     <div className="practice">
-      {/* Header bar */}
       <div className="practice-header">
         <button className="back-btn" onClick={onBack}>← Back</button>
         <div className="practice-topic-tag">{topicLabel}</div>
@@ -119,14 +111,13 @@ const fetchQuestion = useCallback(async () => {
               title="Click to zoom"
             >
               <img
-                src={`${API}${question.question_image}`}
+                src={question.question_image}
                 alt="Question"
                 className="question-img"
               />
               <div className="zoom-hint">{imageZoomed ? '↙ click to shrink' : '↗ click to zoom'}</div>
             </div>
 
-            {/* Self-mark section */}
             {!showAnswer && !result && (
               <div className="answer-reveal">
                 {question.answer_image ? (
@@ -152,7 +143,7 @@ const fetchQuestion = useCallback(async () => {
               <div className="answer-section">
                 <div className="question-label">// ANSWER</div>
                 <img
-                  src={`${API}${question.answer_image}`}
+                  src={question.answer_image}
                   alt="Answer"
                   className="answer-img"
                 />
@@ -175,7 +166,10 @@ const fetchQuestion = useCallback(async () => {
                 <span className="result-text">
                   {result === 'correct' ? 'Nice work!' : 'Keep practising!'}
                 </span>
-                <button className="next-btn" onClick={fetchQuestion}>
+                <button className="next-btn" onClick={() => {
+                  if (onNext) onNext();
+                  fetchQuestion();
+                }}>
                   Next Question →
                 </button>
               </div>
