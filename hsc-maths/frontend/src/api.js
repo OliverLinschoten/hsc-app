@@ -1,4 +1,4 @@
-const API = process.env.REACT_APP_API_URL || 'http://localhost:3001';
+const API = process.env.REACT_APP_API_URL || 'http://localhost:5000';
 
 export function authFetch(url, options = {}) {
   const token = localStorage.getItem('token');
