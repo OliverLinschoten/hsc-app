@@ -32,7 +32,6 @@ cloudinary.config({
 
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
-  // Supabase-specific connection options (optional but recommended)
   max: 20,
   idleTimeoutMillis: 30000,
   connectionTimeoutMillis: 2000,
@@ -108,23 +107,38 @@ function requireAdmin(req, res, next) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Topics (hardcoded for now, can be moved to DB later)
+// Courses & Topics
 // ─────────────────────────────────────────────────────────────────────────────
 
-const TOPICS = [
-  'Algebra',
-  'Trigonometry',
-  'Calculus',
-  'Geometry',
-  'Vectors',
-  'Statistics'
-];
+const COURSES = {
+  'Standard 1': [
+    'Algebra', 'Measurement', 'Financial Mathematics',
+    'Statistical Analysis', 'Networks'
+  ],
+  'Standard 2': [
+    'Algebra', 'Measurement', 'Financial Mathematics',
+    'Statistical Analysis', 'Networks', 'Probability',
+    'Linear Relationships', 'Non-linear Relationships',
+    'Trigonometry', 'Simultaneous Linear Equations'
+  ],
+  'Advanced': [
+    'Functions', 'Trigonometric Functions', 'Calculus',
+    'Exponential & Logarithmic Functions', 'Statistical Analysis'
+  ],
+  'Extension 1': [
+    'Functions', 'Trigonometric Functions', 'Calculus',
+    'Combinatorics', 'Proof', 'Vectors'
+  ],
+  'Extension 2': [
+    'Proof', 'Vectors', 'Complex Numbers',
+    'Calculus', 'Mechanics'
+  ]
+};
 
 // ─────────────────────────────────────────────────────────────────────────────
 // AUTH ROUTES
 // ─────────────────────────────────────────────────────────────────────────────
 
-// POST register
 app.post('/api/auth/register', async (req, res) => {
   try {
     const { email, password } = req.body;
@@ -151,14 +165,13 @@ app.post('/api/auth/register', async (req, res) => {
     res.status(201).json({ token, user: { id: user.id, email: user.email, role: user.role } });
   } catch (err) {
     console.error(err);
-    if (err.code === '23505') { // unique_violation in PostgreSQL
+    if (err.code === '23505') {
       return res.status(400).json({ error: 'Email already in use' });
     }
     res.status(500).json({ error: 'Server error' });
   }
 });
 
-// POST login
 app.post('/api/auth/login', async (req, res) => {
   try {
     const { email, password } = req.body;
@@ -191,7 +204,6 @@ app.post('/api/auth/login', async (req, res) => {
   }
 });
 
-// GET current user
 app.get('/api/auth/me', requireAuth, async (req, res) => {
   try {
     const result = await pool.query(
@@ -210,11 +222,65 @@ app.get('/api/auth/me', requireAuth, async (req, res) => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// TOPIC ROUTES
+// COURSE & TOPIC ROUTES
 // ─────────────────────────────────────────────────────────────────────────────
 
+app.get('/api/courses', (req, res) => {
+  res.json(COURSES);
+});
+
 app.get('/api/topics', (req, res) => {
-  res.json(TOPICS);
+  const { course } = req.query;
+  if (course && COURSES[course]) {
+    return res.json(COURSES[course]);
+  }
+  const all = [...new Set(Object.values(COURSES).flat())];
+  res.json(all);
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// PAPER ROUTES
+// ─────────────────────────────────────────────────────────────────────────────
+
+app.get('/api/papers', requireAuth, async (req, res) => {
+  try {
+    const { course } = req.query;
+    const conditions = [`paper IS NOT NULL`, `paper != ''`];
+    const params = [];
+
+    if (course) {
+      params.push(course);
+      conditions.push(`course = $${params.length}`);
+    }
+
+    const result = await pool.query(
+      `SELECT paper, COUNT(*) as question_count, SUM(COALESCE(marks, 0)) as total_marks
+       FROM questions
+       WHERE ${conditions.join(' AND ')}
+       GROUP BY paper
+       ORDER BY paper ASC`,
+      params
+    );
+    res.json(result.rows);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Database error' });
+  }
+});
+
+app.get('/api/questions/paper/:paper', requireAuth, async (req, res) => {
+  try {
+    const result = await pool.query(
+      `SELECT * FROM questions
+       WHERE paper = $1
+       ORDER BY question_number ASC NULLS LAST, id ASC`,
+      [req.params.paper]
+    );
+    res.json(result.rows);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Database error' });
+  }
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -223,18 +289,24 @@ app.get('/api/topics', (req, res) => {
 
 app.get('/api/questions', requireAuth, async (req, res) => {
   try {
-    const { topic } = req.query;
+    const { topic, course } = req.query;
+    const conditions = [];
+    const params = [];
 
-    let result;
+    if (course) {
+      params.push(course);
+      conditions.push(`course = $${params.length}`);
+    }
     if (topic && topic !== 'all') {
-      result = await pool.query(
-        'SELECT * FROM questions WHERE topic = $1 ORDER BY created_at DESC',
-        [topic]
-      );
-    } else {
-      result = await pool.query('SELECT * FROM questions ORDER BY created_at DESC');
+      params.push(topic);
+      conditions.push(`topic = $${params.length}`);
     }
 
+    const where = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
+    const result = await pool.query(
+      `SELECT * FROM questions ${where} ORDER BY created_at DESC`,
+      params
+    );
     res.json(result.rows);
   } catch (err) {
     console.error(err);
@@ -244,17 +316,24 @@ app.get('/api/questions', requireAuth, async (req, res) => {
 
 app.get('/api/questions/random', requireAuth, async (req, res) => {
   try {
-    const { topic } = req.query;
+    const { topic, course } = req.query;
+    const conditions = [];
+    const params = [];
 
-    let result;
-    if (topic && topic !== 'all') {
-      result = await pool.query(
-        'SELECT * FROM questions WHERE topic = $1 ORDER BY RANDOM() LIMIT 1',
-        [topic]
-      );
-    } else {
-      result = await pool.query('SELECT * FROM questions ORDER BY RANDOM() LIMIT 1');
+    if (course) {
+      params.push(course);
+      conditions.push(`course = $${params.length}`);
     }
+    if (topic && topic !== 'all') {
+      params.push(topic);
+      conditions.push(`topic = $${params.length}`);
+    }
+
+    const where = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
+    const result = await pool.query(
+      `SELECT * FROM questions ${where} ORDER BY RANDOM() LIMIT 1`,
+      params
+    );
 
     if (result.rows.length === 0) {
       return res.status(404).json({ error: 'No questions found' });
@@ -285,12 +364,17 @@ app.post('/api/questions', requireAdmin, upload.fields([
   { name: 'answer_image', maxCount: 1 }
 ]), async (req, res) => {
   try {
-    const { topic, source, marks } = req.body;
+    const { topic, paper, marks, question_number, course } = req.body;
 
     if (!req.files?.question_image) {
       return res.status(400).json({ error: 'Question image is required' });
     }
-    if (!topic || !TOPICS.includes(topic)) {
+
+    const validTopics = course && COURSES[course]
+      ? COURSES[course]
+      : Object.values(COURSES).flat();
+
+    if (!topic || !validTopics.includes(topic)) {
       return res.status(400).json({ error: 'Valid topic is required' });
     }
 
@@ -300,10 +384,18 @@ app.post('/api/questions', requireAdmin, upload.fields([
       : null;
 
     const result = await pool.query(
-      `INSERT INTO questions (topic, source, marks, question_image, answer_image)
-       VALUES ($1, $2, $3, $4, $5)
+      `INSERT INTO questions (topic, paper, marks, question_number, course, question_image, answer_image)
+       VALUES ($1, $2, $3, $4, $5, $6, $7)
        RETURNING *`,
-      [topic, source || '', marks ? parseInt(marks) : null, question_image, answer_image]
+      [
+        topic,
+        paper || '',
+        marks ? parseInt(marks) : null,
+        question_number ? parseInt(question_number) : null,
+        course || 'Standard 2',
+        question_image,
+        answer_image
+      ]
     );
 
     res.status(201).json(result.rows[0]);
@@ -363,7 +455,7 @@ app.post('/api/results', requireAuth, async (req, res) => {
 app.get('/api/progress', requireAuth, async (req, res) => {
   try {
     const result = await pool.query(
-      `SELECT 
+      `SELECT
         topic,
         COUNT(*) as total,
         SUM(CASE WHEN correct THEN 1 ELSE 0 END) as correct,
@@ -386,13 +478,13 @@ app.get('/api/progress', requireAuth, async (req, res) => {
 app.get('/api/results', requireAuth, async (req, res) => {
   try {
     const result = await pool.query(
-      `SELECT 
+      `SELECT
         r.id,
         r.question_id,
         r.topic,
         r.correct,
         r.answered_at,
-        q.source
+        q.paper
        FROM results r
        LEFT JOIN questions q ON r.question_id = q.id
        WHERE r.user_id = $1
@@ -411,19 +503,18 @@ app.get('/api/results', requireAuth, async (req, res) => {
 // ADMIN ROUTES
 // ─────────────────────────────────────────────────────────────────────────────
 
-// GET all students + their stats
 app.get('/api/admin/students', requireAdmin, async (req, res) => {
   try {
     const result = await pool.query(
-      `SELECT 
+      `SELECT
         u.id,
         u.email,
         u.created_at,
         COUNT(r.id) as total_attempts,
         SUM(CASE WHEN r.correct THEN 1 ELSE 0 END) as correct,
-        CASE WHEN COUNT(r.id) > 0 
+        CASE WHEN COUNT(r.id) > 0
           THEN ROUND(100.0 * SUM(CASE WHEN r.correct THEN 1 ELSE 0 END) / COUNT(r.id), 1)
-          ELSE 0 
+          ELSE 0
         END as accuracy
        FROM users u
        LEFT JOIN results r ON u.id = r.user_id
@@ -448,7 +539,6 @@ app.listen(PORT, () => {
   console.log(`Using PostgreSQL via ${process.env.DATABASE_URL ? 'DATABASE_URL' : 'manual config'}`);
 });
 
-// Graceful shutdown
 process.on('SIGINT', async () => {
   console.log('Shutting down gracefully...');
   await pool.end();

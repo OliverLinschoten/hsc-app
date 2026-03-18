@@ -61,6 +61,42 @@
   text-transform: uppercase;
 }
 
+/* Course grid */
+.course-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.course-btn {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  color: var(--text-dim);
+  padding: 10px 20px;
+  border-radius: var(--radius);
+  font-size: 12px;
+  font-family: var(--font-mono);
+  font-weight: 500;
+  letter-spacing: 0.5px;
+  transition: all 0.15s;
+}
+
+.course-btn:hover {
+  border-color: #444;
+  color: var(--text);
+}
+
+.course-btn.active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #0d0d0d;
+}
+
+.course-name {
+  font-weight: 500;
+}
+
+/* Topic grid */
 .topic-grid {
   display: flex;
   flex-wrap: wrap;

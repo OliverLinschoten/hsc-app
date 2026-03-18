@@ -1,102 +1,21 @@
-import { useState, useEffect } from "react";
-import {
-  BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
-  PieChart, Pie, Cell, Legend,
-} from "recharts";
-import "./Results.css";
+import { useState, useEffect } from 'react';
+import { PieChart, Pie, Cell, Legend, Tooltip } from 'recharts';
+import './Results.css';
 import { authFetch } from '../api';
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
+const GREEN = '#4ade80';
+const RED = '#f87171';
+const PAGE_SIZE = 10;
 
-async function fetchResults() {
-  const res = await authFetch('/api/results');
-  if (!res.ok) throw new Error("Failed to fetch results");
-  return res.json();
-}
-
-function computeTopicStats(results) {
-  const map = {};
-  for (const r of results) {
-    if (!map[r.topic]) map[r.topic] = { topic: r.topic, correct: 0, total: 0 };
-    map[r.topic].total++;
-    if (r.correct) map[r.topic].correct++;
-  }
-  return Object.values(map).map((t) => ({
-    ...t,
-    accuracy: Math.round((t.correct / t.total) * 100),
-    incorrect: t.total - t.correct,
-  }));
-}
-
-const RED = "#f87171";
-const GREEN = "#4ade80";
-const YELLOW = "#facc15";
-
-function barColor(accuracy) {
-  if (accuracy >= 75) return GREEN;
-  if (accuracy >= 50) return YELLOW;
-  return RED;
-}
-
-// ── Sub-components ────────────────────────────────────────────────────────────
-
-function TopicBar({ topic, accuracy, total }) {
+function TopicBar({ topic, total, correct, accuracy }) {
   return (
     <div className="topic-bar-row">
-      <div className="topic-bar-label">{topic}</div>
+      <span className="topic-bar-name">{topic}</span>
       <div className="topic-bar-track">
-        <div
-          className="topic-bar-fill"
-          style={{ width: `${accuracy}%`, background: barColor(accuracy) }}
-        />
+        <div className="topic-bar-fill" style={{ width: `${accuracy}%` }} />
       </div>
-      <div className="topic-bar-pct" style={{ color: barColor(accuracy) }}>{accuracy}%</div>
-      <div className="topic-bar-count">{total} attempts</div>
-    </div>
-  );
-}
-
-function RecommendationsPanel({ topicStats }) {
-  const weak = [...topicStats]
-    .filter((t) => t.accuracy < 60)
-    .sort((a, b) => a.accuracy - b.accuracy);
-
-  if (weak.length === 0) {
-    return (
-      <p className="rec-empty">
-        🎉 No topics below 60% — keep it up.
-      </p>
-    );
-  }
-
-  return (
-    <div>
-      {weak.map((t) => (
-        <div key={t.topic} className="rec-item">
-          <div className="rec-item-left">
-            <div className="rec-item-dot" style={{ background: barColor(t.accuracy) }} />
-            <div>
-              <div className="rec-item-topic">{t.topic}</div>
-              <div className="rec-item-attempts">{t.correct}/{t.total} correct</div>
-            </div>
-          </div>
-          <div className="rec-item-pct" style={{ color: barColor(t.accuracy) }}>
-            {t.accuracy}%
-          </div>
-        </div>
-      ))}
-    </div>
-  );
-}
-
-function CustomTooltipBar({ active, payload }) {
-  if (!active || !payload?.length) return null;
-  const d = payload[0].payload;
-  return (
-    <div className="custom-tooltip">
-      <div className="custom-tooltip-title">{d.topic}</div>
-      <div>Correct: <span style={{ color: GREEN }}>{d.correct}</span></div>
-      <div>Incorrect: <span style={{ color: RED }}>{d.incorrect}</span></div>
+      <span className="topic-bar-pct">{accuracy}%</span>
+      <span className="topic-bar-count">{correct}/{total}</span>
     </div>
   );
 }
@@ -105,37 +24,57 @@ function CustomTooltipPie({ active, payload }) {
   if (!active || !payload?.length) return null;
   return (
     <div className="custom-tooltip">
-      {payload[0].name}: <strong style={{ color: payload[0].payload.color }}>{payload[0].value}</strong>
+      <div className="custom-tooltip-title">{payload[0].name}</div>
+      <div>{payload[0].value} questions</div>
     </div>
   );
 }
 
-// ── Main Page ─────────────────────────────────────────────────────────────────
+function RecommendationsPanel({ topicStats }) {
+  const weak = topicStats.filter(t => t.accuracy < 60).sort((a, b) => a.accuracy - b.accuracy);
+  if (weak.length === 0) return <div className="recs-empty">Looking good across all topics!</div>;
+  return (
+    <div className="recs-list">
+      {weak.map(t => (
+        <div key={t.topic} className="rec-item">
+          <span className="rec-topic">{t.topic}</span>
+          <span className="rec-accuracy">{t.accuracy}%</span>
+        </div>
+      ))}
+    </div>
+  );
+}
 
-const PAGE_SIZE = 10;
-
-export default function ResultsPage({ onViewQuestion }) {
+export default function Results({ onViewQuestion }) {
   const [results, setResults] = useState([]);
-  const [topicStats, setTopicStats] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [tableFilter, setTableFilter] = useState("all");
-  const [sortKey, setSortKey] = useState("answered_at");
+  const [tableFilter, setTableFilter] = useState('all');
+  const [sortKey, setSortKey] = useState('answered_at');
   const [page, setPage] = useState(1);
 
   useEffect(() => {
-    fetchResults()
-      .then((data) => {
-        setResults(data);
-        setTopicStats(computeTopicStats(data));
-      })
-      .catch((e) => setError(e.message))
-      .finally(() => setLoading(false));
+    authFetch('/api/results')
+      .then(r => r.json())
+      .then(data => { setResults(data); setLoading(false); })
+      .catch(e => { setError(e.message); setLoading(false); });
   }, []);
 
   const total = results.length;
-  const correct = results.filter((r) => r.correct).length;
-  const accuracy = total ? Math.round((correct / total) * 100) : 0;
+  const correct = results.filter(r => r.correct).length;
+
+  const topicStats = [...new Set(results.map(r => r.topic))].map(topic => {
+    const topicResults = results.filter(r => r.topic === topic);
+    const topicCorrect = topicResults.filter(r => r.correct).length;
+    return {
+      topic,
+      total: topicResults.length,
+      correct: topicCorrect,
+      accuracy: Math.round((topicCorrect / topicResults.length) * 100)
+    };
+  });
+
+  const accuracy = total > 0 ? Math.round((correct / total) * 100) : 0;
 
   const handleFilterChange = (f) => {
     setTableFilter(f);
@@ -217,36 +156,6 @@ export default function ResultsPage({ onViewQuestion }) {
             <div className="results-section-label">Charts</div>
             <div className="results-charts">
               <div className="results-block">
-                <div className="results-block-label">Attempts per Topic</div>
-                <ResponsiveContainer width="100%" height={200}>
-                  <BarChart data={topicStats} margin={{ top: 0, right: 0, left: -20, bottom: 0 }}>
-                    <XAxis
-                      dataKey="topic"
-                      tick={{ fill: "var(--text-dimmer)", fontSize: 10, fontFamily: "var(--font-mono)" }}
-                      tickLine={false}
-                      axisLine={false}
-                    />
-                    <YAxis
-                      tick={{ fill: "var(--text-dimmer)", fontSize: 10, fontFamily: "var(--font-mono)" }}
-                      tickLine={false}
-                      axisLine={false}
-                    />
-                    <Tooltip content={<CustomTooltipBar />} cursor={{ fill: "rgba(255,255,255,0.03)" }} />
-                    <Bar dataKey="correct" stackId="a" fill={GREEN} />
-                    <Bar dataKey="incorrect" stackId="a" fill={RED} radius={[2, 2, 0, 0]} />
-                  </BarChart>
-                </ResponsiveContainer>
-                <div className="chart-legend">
-                  {[[GREEN, "Correct"], [RED, "Incorrect"]].map(([c, l]) => (
-                    <div key={l} className="chart-legend-item">
-                      <div className="chart-legend-dot" style={{ background: c }} />
-                      {l}
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              <div className="results-block">
                 <div className="results-block-label">Overall Split</div>
                 <PieChart width={260} height={200}>
                   <Pie
@@ -323,7 +232,7 @@ export default function ResultsPage({ onViewQuestion }) {
                           <td className="td-topic">{r.topic}</td>
                           <td className="td-question">
                             <button className="question-link-btn" onClick={() => onViewQuestion(r.question_id, r.topic)}>
-                              {r.source || `Q#${r.question_id}`}
+                              {r.paper || `Q#${r.question_id}`}
                             </button>
                           </td>
                           <td>

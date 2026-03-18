@@ -3,7 +3,7 @@ import './Admin.css';
 import { authFetch } from '../api';
 
 export default function Admin() {
-  const [topics, setTopics] = useState([]);
+  const [courses, setCourses] = useState({});
   const [questions, setQuestions] = useState([]);
   const [loading, setLoading] = useState(false);
   const [uploading, setUploading] = useState(false);
@@ -11,9 +11,11 @@ export default function Admin() {
   const [filterTopic, setFilterTopic] = useState('all');
 
   const [form, setForm] = useState({
+    course: '',
     topic: '',
-    source: '',
+    paper: '',
     marks: '',
+    question_number: '',
     question_image: null,
     answer_image: null
   });
@@ -24,9 +26,12 @@ export default function Admin() {
   const aRef = useRef();
 
   useEffect(() => {
-    authFetch('/api/topics').then(r => r.json()).then(setTopics);
+    authFetch('/api/courses').then(r => r.json()).then(setCourses);
     loadQuestions();
   }, []);
+
+  const availableTopics = form.course && courses[form.course] ? courses[form.course] : [];
+  const allTopics = [...new Set(Object.values(courses).flat())];
 
   async function loadQuestions() {
     setLoading(true);
@@ -48,17 +53,19 @@ export default function Admin() {
   }
 
   async function handleSubmit() {
-    if (!form.topic || !form.question_image) {
-      setMessage({ type: 'error', text: 'Topic and question image are required.' });
+    if (!form.course || !form.topic || !form.question_image) {
+      setMessage({ type: 'error', text: 'Course, topic and question image are required.' });
       return;
     }
     setUploading(true);
     setMessage(null);
 
     const fd = new FormData();
+    fd.append('course', form.course);
     fd.append('topic', form.topic);
-    fd.append('source', form.source);
+    fd.append('paper', form.paper);
     fd.append('marks', form.marks);
+    fd.append('question_number', form.question_number);
     fd.append('question_image', form.question_image);
     if (form.answer_image) fd.append('answer_image', form.answer_image);
 
@@ -66,7 +73,7 @@ export default function Admin() {
       const res = await authFetch('/api/questions', { method: 'POST', body: fd, headers: {} });
       if (!res.ok) throw new Error('Upload failed');
       setMessage({ type: 'success', text: 'Question uploaded successfully!' });
-      setForm({ topic: '', source: '', marks: '', question_image: null, answer_image: null });
+      setForm({ course: form.course, topic: '', paper: form.paper, marks: '', question_number: '', question_image: null, answer_image: null });
       setPreviewQ(null);
       setPreviewA(null);
       if (qRef.current) qRef.current.value = '';
@@ -101,24 +108,47 @@ export default function Admin() {
           <div className="card-label">// UPLOAD NEW QUESTION</div>
 
           <div className="form-group">
+            <label>Course *</label>
+            <select
+              value={form.course}
+              onChange={e => setForm(f => ({ ...f, course: e.target.value, topic: '' }))}
+            >
+              <option value="">Select course…</option>
+              {Object.keys(courses).map(c => <option key={c} value={c}>{c}</option>)}
+            </select>
+          </div>
+
+          <div className="form-group">
             <label>Topic *</label>
             <select
               value={form.topic}
               onChange={e => setForm(f => ({ ...f, topic: e.target.value }))}
+              disabled={!form.course}
             >
-              <option value="">Select topic…</option>
-              {topics.map(t => <option key={t} value={t}>{t}</option>)}
+              <option value="">{form.course ? 'Select topic…' : 'Pick a course first'}</option>
+              {availableTopics.map(t => <option key={t} value={t}>{t}</option>)}
             </select>
           </div>
 
           <div className="form-row">
             <div className="form-group">
-              <label>Source</label>
+              <label>Paper</label>
               <input
                 type="text"
                 placeholder="e.g. 2023 HSC Paper"
-                value={form.source}
-                onChange={e => setForm(f => ({ ...f, source: e.target.value }))}
+                value={form.paper}
+                onChange={e => setForm(f => ({ ...f, paper: e.target.value }))}
+              />
+            </div>
+            <div className="form-group form-group-sm">
+              <label>Q #</label>
+              <input
+                type="number"
+                placeholder="e.g. 1"
+                min="1"
+                max="50"
+                value={form.question_number}
+                onChange={e => setForm(f => ({ ...f, question_number: e.target.value }))}
               />
             </div>
             <div className="form-group form-group-sm">
@@ -190,7 +220,7 @@ export default function Admin() {
           <div className="filter-row">
             <select value={filterTopic} onChange={e => setFilterTopic(e.target.value)}>
               <option value="all">All Topics</option>
-              {topics.map(t => <option key={t} value={t}>{t}</option>)}
+              {allTopics.map(t => <option key={t} value={t}>{t}</option>)}
             </select>
             <span className="filter-count">{filtered.length} shown</span>
           </div>
@@ -209,8 +239,10 @@ export default function Admin() {
                     className="row-thumb"
                   />
                   <div className="row-info">
+                    {q.course && <span className="row-course">{q.course}</span>}
                     <span className="row-topic">{q.topic}</span>
-                    {q.source && <span className="row-source">{q.source}</span>}
+                    {q.paper && <span className="row-source">{q.paper}</span>}
+                    {q.question_number && <span className="row-qnum">Q{q.question_number}</span>}
                     {q.marks && <span className="row-marks">{q.marks}m</span>}
                     {q.answer_image && <span className="row-has-answer">✓ ans</span>}
                   </div>
