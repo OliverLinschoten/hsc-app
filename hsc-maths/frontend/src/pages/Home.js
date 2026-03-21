@@ -5,7 +5,7 @@ import { authFetch } from '../api';
 export default function Home({ course, onCourseChange, onStart }) {
   const [courses, setCourses] = useState({});
   const [topics, setTopics] = useState([]);
-  const [selected, setSelected] = useState('all');
+  const [selected, setSelected] = useState([]);
   const [counts, setCounts] = useState({});
   const [loading, setLoading] = useState(false);
 
@@ -23,7 +23,7 @@ export default function Home({ course, onCourseChange, onStart }) {
     }
 
     setLoading(true);
-    setSelected('all');
+    setSelected([]);
 
     Promise.all([
       authFetch(`/api/topics?course=${encodeURIComponent(course)}`).then(r => r.json()),
@@ -39,7 +39,24 @@ export default function Home({ course, onCourseChange, onStart }) {
     }).catch(() => setLoading(false));
   }, [course]);
 
-  const totalForSelected = counts[selected] || 0;
+  const isAllSelected = selected.length === 0;
+
+  const totalForSelected = isAllSelected
+    ? (counts.all || 0)
+    : selected.reduce((sum, t) => sum + (counts[t] || 0), 0);
+
+  const toggleTopic = (topic) => {
+    setSelected(prev =>
+      prev.includes(topic)
+        ? prev.filter(t => t !== topic)
+        : [...prev, topic]
+    );
+  };
+
+  const handleStart = () => {
+    // Pass 'all' if none selected (meaning all), otherwise comma-separated
+    onStart(isAllSelected ? 'all' : selected.join(','));
+  };
 
   return (
     <div className="home">
@@ -77,11 +94,11 @@ export default function Home({ course, onCourseChange, onStart }) {
       {/* Topic selector — only shows after course is picked */}
       {course && (
         <div className="home-selector">
-          <div className="selector-label">// SELECT TOPIC</div>
+          <div className="selector-label">// SELECT TOPICS</div>
           <div className="topic-grid">
             <button
-              className={`topic-btn ${selected === 'all' ? 'active' : ''}`}
-              onClick={() => setSelected('all')}
+              className={`topic-btn ${isAllSelected ? 'active' : ''}`}
+              onClick={() => setSelected([])}
             >
               <span className="topic-name">All Topics</span>
               <span className="topic-count">{loading ? '…' : counts.all || 0}</span>
@@ -89,8 +106,8 @@ export default function Home({ course, onCourseChange, onStart }) {
             {topics.map(topic => (
               <button
                 key={topic}
-                className={`topic-btn ${selected === topic ? 'active' : ''}`}
-                onClick={() => setSelected(topic)}
+                className={`topic-btn ${selected.includes(topic) ? 'active' : ''}`}
+                onClick={() => toggleTopic(topic)}
               >
                 <span className="topic-name">{topic}</span>
                 <span className="topic-count">{loading ? '…' : counts[topic] || 0}</span>
@@ -101,9 +118,9 @@ export default function Home({ course, onCourseChange, onStart }) {
       )}
 
       {/* CTA */}
-      {course && (
+      {course && !loading && (
         <div className="home-cta">
-          {totalForSelected === 0 && !loading ? (
+          {totalForSelected === 0 ? (
             <div className="no-questions">
               No questions yet for this selection.<br />
               <span>Add some via the Admin panel.</span>
@@ -111,10 +128,11 @@ export default function Home({ course, onCourseChange, onStart }) {
           ) : (
             <button
               className="start-btn"
-              onClick={() => onStart(selected)}
+              onClick={handleStart}
               disabled={totalForSelected === 0}
             >
               <span className="start-btn-label">Start Practice</span>
+              <span className="start-btn-count">{totalForSelected} question{totalForSelected !== 1 ? 's' : ''}</span>
               <span className="start-btn-arrow">→</span>
             </button>
           )}

@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import './Practice.css';
 import { authFetch } from '../api';
+import Scratchpad from '../components/Scratchpad';
 
 export default function Practice({ topic, id, paper, course, onBack, onNext }) {
   const [question, setQuestion] = useState(null);
@@ -56,7 +57,9 @@ export default function Practice({ topic, id, paper, course, onBack, onNext }) {
       if (id) {
         url = `/api/questions/${id}`;
       } else if (topic && topic !== 'all') {
-        url = `/api/questions/random?topic=${encodeURIComponent(topic)}${courseParam ? `&${courseParam}` : ''}`;
+        // topic may be comma-separated for multi-select
+        const topicParam = `topic=${encodeURIComponent(topic)}`;
+        url = `/api/questions/random?${topicParam}${courseParam ? `&${courseParam}` : ''}`;
       } else {
         url = `/api/questions/random${courseParam ? `?${courseParam}` : ''}`;
       }
@@ -132,7 +135,16 @@ export default function Practice({ topic, id, paper, course, onBack, onNext }) {
   };
 
   const isPaperMode = !!paper;
-  const topicLabel = isPaperMode ? paper : (topic === 'all' ? 'All Topics' : topic);
+
+  // Build a display label for multi-topic
+  const topicLabel = isPaperMode
+    ? paper
+    : (!topic || topic === 'all')
+      ? 'All Topics'
+      : topic.includes(',')
+        ? `${topic.split(',').length} Topics`
+        : topic;
+
   const isLastQuestion = isPaperMode && currentIndex >= paperQuestions.length - 1;
   const isFirstQuestion = isPaperMode && currentIndex === 0;
 
@@ -226,83 +238,72 @@ export default function Practice({ topic, id, paper, course, onBack, onNext }) {
             </div>
 
             <div className="question-label">// QUESTION</div>
-            <div
-              className={`question-image-wrap ${imageZoomed ? 'zoomed' : ''}`}
-              onClick={() => setImageZoomed(z => !z)}
-              title="Click to zoom"
-            >
-              <img
-                src={question.question_image}
-                alt="Question"
-                className="question-img"
-              />
-              <div className="zoom-hint">{imageZoomed ? '↙ click to shrink' : '↗ click to zoom'}</div>
-            </div>
+            <Scratchpad
+              key={question.id}
+              imageUrl={question.question_image}
+            />
 
             {!showAnswer && !result && (
               <div className="answer-reveal">
                 {question.answer_image ? (
                   <button className="reveal-btn" onClick={() => setShowAnswer(true)}>
-                    Reveal Answer
+                    Show Answer
                   </button>
                 ) : (
-                  <>
-                    <div className="no-answer-note">No answer image uploaded for this question.</div>
-                    <div className="mark-prompt">Mark yourself:</div>
-                    <div className="mark-btns">
-                      <button className="mark-btn correct" onClick={() => handleMark(true)}>
-                        ✓ Got it
-                      </button>
-                      <button className="mark-btn incorrect" onClick={() => handleMark(false)}>
-                        ✗ Missed it
-                      </button>
-                    </div>
-                  </>
+                  <div className="no-answer-hint">No answer image — mark based on your working</div>
                 )}
               </div>
             )}
 
-            {showAnswer && question.answer_image && (
-              <div className="answer-section">
+            {(showAnswer || result) && question.answer_image && (
+              <>
                 <div className="question-label">// ANSWER</div>
-                <img
-                  src={question.answer_image}
-                  alt="Answer"
-                  className="answer-img"
-                />
-                {!result && (
-                  <div className="mark-btns">
-                    <button className="mark-btn correct" onClick={() => handleMark(true)}>
-                      ✓ Got it
-                    </button>
-                    <button className="mark-btn incorrect" onClick={() => handleMark(false)}>
-                      ✗ Missed it
-                    </button>
-                  </div>
-                )}
+                <div className="answer-image-wrap">
+                  <img
+                    src={question.answer_image}
+                    alt="Answer"
+                    className="answer-img"
+                  />
+                </div>
+              </>
+            )}
+
+            {showAnswer && !result && (
+              <div className="mark-buttons">
+                <button className="mark-btn mark-correct" onClick={() => handleMark(true)}>
+                  ✓ Got it
+                </button>
+                <button className="mark-btn mark-incorrect" onClick={() => handleMark(false)}>
+                  ✗ Missed it
+                </button>
+              </div>
+            )}
+
+            {!showAnswer && !result && !question.answer_image && (
+              <div className="mark-buttons">
+                <button className="mark-btn mark-correct" onClick={() => handleMark(true)}>
+                  ✓ Got it
+                </button>
+                <button className="mark-btn mark-incorrect" onClick={() => handleMark(false)}>
+                  ✗ Missed it
+                </button>
               </div>
             )}
 
             {result && (
-              <div className={`result-banner ${result}`}>
-                <span className="result-icon">{result === 'correct' ? '✓' : '✗'}</span>
-                <span className="result-text">
-                  {result === 'correct' ? 'Nice work!' : 'Keep practising!'}
-                </span>
-                {!isPaperMode && (
-                  <button className="next-btn" onClick={handleNext}>
-                    Next Question →
-                  </button>
-                )}
+              <div className={`result-banner result-${result}`}>
+                {result === 'correct' ? '✓ Marked correct' : '✗ Marked incorrect'}
               </div>
+            )}
+
+            {result && !isPaperMode && (
+              <button className="next-btn" onClick={handleNext}>
+                Next Question →
+              </button>
             )}
           </div>
         )}
       </div>
-
-      {imageZoomed && (
-        <div className="zoom-overlay" onClick={() => setImageZoomed(false)} />
-      )}
     </div>
   );
 }

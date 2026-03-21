@@ -298,8 +298,12 @@ app.get('/api/questions', requireAuth, async (req, res) => {
       conditions.push(`course = $${params.length}`);
     }
     if (topic && topic !== 'all') {
-      params.push(topic);
-      conditions.push(`topic = $${params.length}`);
+      const topics = topic.split(',').map(t => t.trim()).filter(Boolean);
+      const placeholders = topics.map((t, i) => {
+        params.push(t);
+        return `$${params.length}`;
+      });
+      conditions.push(`topic IN (${placeholders.join(', ')})`);
     }
 
     const where = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
@@ -325,8 +329,12 @@ app.get('/api/questions/random', requireAuth, async (req, res) => {
       conditions.push(`course = $${params.length}`);
     }
     if (topic && topic !== 'all') {
-      params.push(topic);
-      conditions.push(`topic = $${params.length}`);
+      const topics = topic.split(',').map(t => t.trim()).filter(Boolean);
+      const placeholders = topics.map((t, i) => {
+        params.push(t);
+        return `$${params.length}`;
+      });
+      conditions.push(`topic IN (${placeholders.join(', ')})`);
     }
 
     const where = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';

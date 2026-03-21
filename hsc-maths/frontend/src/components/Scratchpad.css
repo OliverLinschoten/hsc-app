@@ -1,0 +1,201 @@
+/* ── Scratchpad toolbar ── */
+.scratchpad {
+  margin-bottom: 32px;
+}
+
+.scratchpad-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+  flex-wrap: wrap;
+}
+
+.sp-tool-toggle {
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  color: var(--text-dim);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  padding: 6px 14px;
+  border-radius: var(--radius);
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.sp-tool-toggle:hover {
+  border-color: var(--text-dim);
+  color: var(--text);
+}
+
+.sp-tool-toggle.active {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: rgba(232, 255, 71, 0.08);
+}
+
+.sp-tools {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  animation: fadeIn 0.15s ease;
+}
+
+/* ── Colour picker ── */
+.sp-colors {
+  display: flex;
+  gap: 4px;
+}
+
+.sp-color {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  border: 2px solid transparent;
+  cursor: pointer;
+  transition: all 0.15s;
+  padding: 0;
+}
+
+.sp-color:hover {
+  transform: scale(1.15);
+}
+
+.sp-color.active {
+  border-color: var(--text);
+  box-shadow: 0 0 0 2px var(--surface), 0 0 0 4px var(--text-dim);
+}
+
+/* ── Size picker ── */
+.sp-sizes {
+  display: flex;
+  gap: 4px;
+}
+
+.sp-size {
+  width: 28px;
+  height: 28px;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  background: var(--surface2);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.15s;
+  padding: 0;
+}
+
+.sp-size:hover {
+  border-color: var(--text-dim);
+}
+
+.sp-size.active {
+  border-color: var(--accent);
+  background: rgba(232, 255, 71, 0.08);
+}
+
+.sp-size-dot {
+  border-radius: 50%;
+  background: var(--text-dim);
+  display: block;
+}
+
+.sp-size.active .sp-size-dot {
+  background: var(--accent);
+}
+
+/* ── Eraser, undo & clear ── */
+.sp-eraser,
+.sp-undo,
+.sp-clear {
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  color: var(--text-dim);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  padding: 5px 12px;
+  border-radius: var(--radius);
+  cursor: pointer;
+  transition: all 0.15s;
+  letter-spacing: 0.5px;
+}
+
+.sp-eraser:hover,
+.sp-undo:hover,
+.sp-clear:hover {
+  border-color: var(--text-dim);
+  color: var(--text);
+}
+
+.sp-eraser.active {
+  border-color: #f59e0b;
+  color: #f59e0b;
+  background: rgba(245, 158, 11, 0.08);
+}
+
+.sp-undo.disabled {
+  opacity: 0.35;
+  cursor: default;
+  pointer-events: none;
+}
+
+.sp-clear:hover {
+  border-color: #f87171;
+  color: #f87171;
+}
+
+/* ── Canvas container ── */
+.scratchpad-container {
+  position: relative;
+  border-radius: var(--radius);
+  overflow: hidden;
+  border: 1px solid var(--border);
+  background: white;
+  transition: border-color 0.2s;
+}
+
+.scratchpad-container.drawing-mode {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px rgba(232, 255, 71, 0.15);
+}
+
+.scratchpad-img {
+  width: 100%;
+  display: block;
+  user-select: none;
+  -webkit-user-drag: none;
+  pointer-events: none;
+}
+
+.scratchpad-canvas {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  touch-action: none;
+}
+
+.scratchpad-canvas.active {
+  pointer-events: auto;
+  cursor: crosshair;
+}
+
+/* ── Responsive ── */
+@media (max-width: 640px) {
+  .scratchpad-toolbar {
+    gap: 6px;
+  }
+
+  .sp-tools {
+    gap: 8px;
+  }
+
+  .sp-tool-toggle {
+    font-size: 10px;
+    padding: 5px 10px;
+  }
+}

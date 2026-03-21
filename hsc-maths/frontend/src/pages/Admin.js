@@ -53,8 +53,8 @@ export default function Admin() {
   }
 
   async function handleSubmit() {
-    if (!form.course || !form.topic || !form.question_image) {
-      setMessage({ type: 'error', text: 'Course, topic and question image are required.' });
+    if (!form.course || !form.topic || !form.question_image || !form.marks || !form.question_number || !form.answer_image) {
+      setMessage({ type: 'error', text: 'All fields are required.' });
       return;
     }
     setUploading(true);
@@ -185,7 +185,7 @@ export default function Admin() {
           </div>
 
           <div className="form-group">
-            <label>Answer Image <span className="optional">(optional)</span></label>
+            <label>Answer Image </label>
             <div
               className={`drop-zone ${previewA ? 'has-preview' : ''}`}
               onClick={() => aRef.current?.click()}
