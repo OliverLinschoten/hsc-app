@@ -2,14 +2,14 @@ import { useRef, useEffect, useState, useCallback } from 'react';
 import './Scratchpad.css';
 
 const COLORS = ['#000000', '#e53e3e', '#3182ce', '#38a169', '#e8ff47'];
-const SIZES = [2, 4, 8];
+const PEN_SIZE = 2;
+const ERASER_SIZE = 6;
 
 export default function Scratchpad({ imageUrl }) {
   const canvasRef = useRef(null);
   const containerRef = useRef(null);
   const [drawing, setDrawing] = useState(false);
   const [color, setColor] = useState(COLORS[0]);
-  const [size, setSize] = useState(SIZES[1]);
   const [eraser, setEraser] = useState(false);
   const [toolsOpen, setToolsOpen] = useState(false);
   const lastPos = useRef(null);
@@ -17,7 +17,6 @@ export default function Scratchpad({ imageUrl }) {
   const [historyLen, setHistoryLen] = useState(0);
   const penErasingRef = useRef(false);
 
-  // Resize canvas to match the displayed image size
   const setupCanvas = useCallback(() => {
     const canvas = canvasRef.current;
     const container = containerRef.current;
@@ -26,7 +25,6 @@ export default function Scratchpad({ imageUrl }) {
     const rect = container.getBoundingClientRect();
     const dpr = window.devicePixelRatio || 1;
 
-    // Save current drawing before resize
     const prevData = canvas.width > 0 && canvas.height > 0
       ? canvas.getContext('2d').getImageData(0, 0, canvas.width, canvas.height)
       : null;
@@ -39,43 +37,36 @@ export default function Scratchpad({ imageUrl }) {
     const ctx = canvas.getContext('2d');
     ctx.scale(dpr, dpr);
 
-    // Restore drawing after resize if dimensions match
     if (prevData && prevData.width === canvas.width && prevData.height === canvas.height) {
       ctx.putImageData(prevData, 0, 0);
     }
   }, []);
 
-  // Save a snapshot of the canvas to history
   const saveSnapshot = useCallback(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
     const ctx = canvas.getContext('2d');
     const snapshot = ctx.getImageData(0, 0, canvas.width, canvas.height);
     historyRef.current.push(snapshot);
-    // Cap history at 50 to avoid memory issues
     if (historyRef.current.length > 50) {
       historyRef.current.shift();
     }
     setHistoryLen(historyRef.current.length);
   }, []);
 
-  // Undo last stroke
   const undo = useCallback(() => {
     const canvas = canvasRef.current;
     if (!canvas || historyRef.current.length === 0) return;
 
     const ctx = canvas.getContext('2d');
-    const dpr = window.devicePixelRatio || 1;
 
     if (historyRef.current.length === 1) {
-      // Only one snapshot = clear to blank
       historyRef.current.pop();
       ctx.save();
       ctx.setTransform(1, 0, 0, 1, 0, 0);
       ctx.clearRect(0, 0, canvas.width, canvas.height);
       ctx.restore();
     } else {
-      // Pop current state, restore previous
       historyRef.current.pop();
       const prev = historyRef.current[historyRef.current.length - 1];
       ctx.save();
@@ -86,7 +77,6 @@ export default function Scratchpad({ imageUrl }) {
     setHistoryLen(historyRef.current.length);
   }, []);
 
-  // Setup on mount and when image loads
   useEffect(() => {
     const img = containerRef.current?.querySelector('img');
     if (!img) return;
@@ -102,7 +92,6 @@ export default function Scratchpad({ imageUrl }) {
     };
   }, [setupCanvas, imageUrl]);
 
-  // Keyboard shortcut: Ctrl+Z / Cmd+Z for undo
   useEffect(() => {
     const handleKeyDown = (e) => {
       if ((e.ctrlKey || e.metaKey) && e.key === 'z') {
@@ -136,13 +125,10 @@ export default function Scratchpad({ imageUrl }) {
   const startDraw = (e) => {
     e.preventDefault();
 
-    // Detect stylus eraser button (button 5 = eraser tip, buttons 32 = eraser held)
     const isPenEraser = e.pointerType === 'pen' && (e.buttons === 32 || e.button === 5);
     penErasingRef.current = isPenEraser;
 
-    // Save snapshot before starting a new stroke
     saveSnapshot();
-
     setDrawing(true);
     lastPos.current = getPos(e);
   };
@@ -162,7 +148,7 @@ export default function Scratchpad({ imageUrl }) {
     ctx.lineTo(pos.x, pos.y);
     ctx.strokeStyle = useEraser ? 'rgba(0,0,0,1)' : color;
     ctx.globalCompositeOperation = useEraser ? 'destination-out' : 'source-over';
-    ctx.lineWidth = useEraser ? size * 3 : size;
+    ctx.lineWidth = useEraser ? ERASER_SIZE : PEN_SIZE;
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
     ctx.stroke();
@@ -180,7 +166,6 @@ export default function Scratchpad({ imageUrl }) {
     const canvas = canvasRef.current;
     if (!canvas) return;
 
-    // Save before clearing so we can undo it
     saveSnapshot();
 
     const ctx = canvas.getContext('2d');
@@ -212,19 +197,6 @@ export default function Scratchpad({ imageUrl }) {
                   onClick={() => { setColor(c); setEraser(false); }}
                   title={c}
                 />
-              ))}
-            </div>
-
-            <div className="sp-sizes">
-              {SIZES.map((s, i) => (
-                <button
-                  key={s}
-                  className={`sp-size ${size === s && !eraser ? 'active' : ''}`}
-                  onClick={() => { setSize(s); setEraser(false); }}
-                  title={['Thin', 'Medium', 'Thick'][i]}
-                >
-                  <span className="sp-size-dot" style={{ width: s + 4, height: s + 4 }} />
-                </button>
               ))}
             </div>
 

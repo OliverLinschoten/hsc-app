@@ -292,14 +292,13 @@ export default function Practice({ topic, id, paper, course, onBack, onNext }) {
 
             {result && (
               <div className={`result-banner result-${result}`}>
-                {result === 'correct' ? '✓ Marked correct' : '✗ Marked incorrect'}
+                <span>{result === 'correct' ? '✓ Marked correct' : '✗ Marked incorrect'}</span>
+                {!isPaperMode && (
+                  <button className="next-btn" onClick={handleNext}>
+                    Next Question →
+                  </button>
+                )}
               </div>
-            )}
-
-            {result && !isPaperMode && (
-              <button className="next-btn" onClick={handleNext}>
-                Next Question →
-              </button>
             )}
           </div>
         )}

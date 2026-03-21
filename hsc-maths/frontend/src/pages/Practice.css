@@ -1,7 +1,7 @@
 .practice {
   flex: 1;
   padding: 40px 40px 80px;
-  max-width: 800px;
+  max-width: 1500px;
   margin: 0 auto;
   width: 100%;
   display: flex;
@@ -405,7 +405,7 @@
   color: var(--text-dimmer);
 }
 
-.mark-btns {
+.mark-buttons {
   display: flex;
   gap: 12px;
 }
@@ -418,75 +418,61 @@
   font-size: 14px;
   border: 2px solid;
   transition: all 0.15s;
+  background: transparent;
+  cursor: pointer;
 }
 
-.mark-btn.correct {
+.mark-btn.mark-correct {
   border-color: #4ade80;
   color: #4ade80;
   background: rgba(74, 222, 128, 0.06);
 }
 
-.mark-btn.correct:hover {
+.mark-btn.mark-correct:hover {
   background: rgba(74, 222, 128, 0.15);
   transform: translateY(-1px);
 }
 
-.mark-btn.incorrect {
+.mark-btn.mark-incorrect {
   border-color: #f87171;
   color: #f87171;
   background: rgba(248, 113, 113, 0.06);
 }
 
-.mark-btn.incorrect:hover {
+.mark-btn.mark-incorrect:hover {
   background: rgba(248, 113, 113, 0.15);
   transform: translateY(-1px);
 }
 
 /* ── Result banner ── */
+/* ── Result banner ── */
 .result-banner {
   margin-top: 32px;
-  padding: 20px 24px;
+  padding: 16px 24px;
   border-radius: var(--radius-lg);
   display: flex;
   align-items: center;
+  justify-content: space-between;
   gap: 16px;
   animation: slideIn 0.3s ease;
-  flex-wrap: wrap;
-}
-
-@keyframes slideIn {
-  from { opacity: 0; transform: translateY(8px); }
-  to { opacity: 1; transform: translateY(0); }
-}
-
-.result-banner.correct {
-  background: rgba(74, 222, 128, 0.08);
-  border: 1px solid rgba(74, 222, 128, 0.25);
-}
-
-.result-banner.incorrect {
-  background: rgba(248, 113, 113, 0.08);
-  border: 1px solid rgba(248, 113, 113, 0.25);
-}
-
-.result-icon {
-  font-size: 22px;
-}
-
-.result-banner.correct .result-icon { color: #4ade80; }
-.result-banner.incorrect .result-icon { color: #f87171; }
-
-.result-text {
   font-family: var(--font-display);
   font-weight: 700;
-  font-size: 16px;
+  font-size: 15px;
 }
 
-.result-banner.correct .result-text { color: #4ade80; }
-.result-banner.incorrect .result-text { color: #f87171; }
+.result-banner.result-correct {
+  background: rgba(74, 222, 128, 0.08);
+  border: 1px solid rgba(74, 222, 128, 0.25);
+  color: #4ade80;
+}
+
+.result-banner.result-incorrect {
+  background: rgba(248, 113, 113, 0.08);
+  border: 1px solid rgba(248, 113, 113, 0.25);
+  color: #f87171;
+}
 
 .next-btn {
-  margin-left: auto;
   background: var(--accent);
   color: #0d0d0d;
   font-family: var(--font-display);
@@ -495,6 +481,7 @@
   padding: 10px 20px;
   border-radius: var(--radius);
   transition: all 0.15s;
+  white-space: nowrap;
 }
 
 .next-btn:hover {

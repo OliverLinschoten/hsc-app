@@ -22,8 +22,20 @@ export default function Admin() {
   const [previewQ, setPreviewQ] = useState(null);
   const [previewA, setPreviewA] = useState(null);
 
+  // Edit state
+  const [editingId, setEditingId] = useState(null);
+  const [editForm, setEditForm] = useState({});
+  const [editPreviewQ, setEditPreviewQ] = useState(null);
+  const [editPreviewA, setEditPreviewA] = useState(null);
+  const [saving, setSaving] = useState(false);
+
+  // View state
+  const [viewingId, setViewingId] = useState(null);
+
   const qRef = useRef();
   const aRef = useRef();
+  const editQRef = useRef();
+  const editARef = useRef();
 
   useEffect(() => {
     authFetch('/api/courses').then(r => r.json()).then(setCourses);
@@ -48,6 +60,17 @@ export default function Admin() {
     reader.onload = (e) => {
       if (field === 'question_image') setPreviewQ(e.target.result);
       else setPreviewA(e.target.result);
+    };
+    reader.readAsDataURL(file);
+  }
+
+  function handleEditFile(field, file) {
+    if (!file) return;
+    setEditForm(f => ({ ...f, [field]: file }));
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      if (field === 'question_image') setEditPreviewQ(e.target.result);
+      else setEditPreviewA(e.target.result);
     };
     reader.readAsDataURL(file);
   }
@@ -86,11 +109,68 @@ export default function Admin() {
     }
   }
 
+  function startEdit(q) {
+    setEditingId(q.id);
+    setViewingId(null);
+    setEditForm({
+      course: q.course || '',
+      topic: q.topic || '',
+      paper: q.paper || '',
+      marks: q.marks || '',
+      question_number: q.question_number || '',
+      question_image: null,
+      answer_image: null
+    });
+    setEditPreviewQ(null);
+    setEditPreviewA(null);
+  }
+
+  function cancelEdit() {
+    setEditingId(null);
+    setEditForm({});
+    setEditPreviewQ(null);
+    setEditPreviewA(null);
+    if (editQRef.current) editQRef.current.value = '';
+    if (editARef.current) editARef.current.value = '';
+  }
+
+  async function handleSaveEdit() {
+    setSaving(true);
+    const fd = new FormData();
+    fd.append('course', editForm.course);
+    fd.append('topic', editForm.topic);
+    fd.append('paper', editForm.paper);
+    fd.append('marks', editForm.marks);
+    fd.append('question_number', editForm.question_number);
+    if (editForm.question_image) fd.append('question_image', editForm.question_image);
+    if (editForm.answer_image) fd.append('answer_image', editForm.answer_image);
+
+    try {
+      const res = await authFetch(`/api/questions/${editingId}`, { method: 'PUT', body: fd, headers: {} });
+      if (!res.ok) throw new Error('Update failed');
+      cancelEdit();
+      loadQuestions();
+    } catch (e) {
+      alert(e.message);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  function toggleView(id) {
+    if (editingId === id) return;
+    setViewingId(prev => prev === id ? null : id);
+  }
+
   async function handleDelete(id) {
     if (!window.confirm('Delete this question?')) return;
     await authFetch(`/api/questions/${id}`, { method: 'DELETE' });
+    if (editingId === id) cancelEdit();
+    if (viewingId === id) setViewingId(null);
     loadQuestions();
   }
+
+  const editTopics = editForm.course && courses[editForm.course] ? courses[editForm.course] : [];
 
   const filtered = filterTopic === 'all' ? questions : questions.filter(q => q.topic === filterTopic);
 
@@ -185,7 +265,7 @@ export default function Admin() {
           </div>
 
           <div className="form-group">
-            <label>Answer Image </label>
+            <label>Answer Image *</label>
             <div
               className={`drop-zone ${previewA ? 'has-preview' : ''}`}
               onClick={() => aRef.current?.click()}
@@ -231,24 +311,170 @@ export default function Admin() {
             <div className="list-empty">No questions yet. Upload one to get started.</div>
           ) : (
             <div className="question-list">
-              {filtered.map(q => (
-                <div key={q.id} className="question-row">
-                  <img
-                    src={q.question_image}
-                    alt="Q"
-                    className="row-thumb"
-                  />
-                  <div className="row-info">
-                    {q.course && <span className="row-course">{q.course}</span>}
-                    <span className="row-topic">{q.topic}</span>
-                    {q.paper && <span className="row-source">{q.paper}</span>}
-                    {q.question_number && <span className="row-qnum">Q{q.question_number}</span>}
-                    {q.marks && <span className="row-marks">{q.marks}m</span>}
-                    {q.answer_image && <span className="row-has-answer">✓ ans</span>}
+              {filtered.map(q => {
+                const isViewing = viewingId === q.id;
+                const isEditing = editingId === q.id;
+                const isExpanded = isViewing || isEditing;
+
+                return (
+                  <div key={q.id}>
+                    <div className={`question-row ${isExpanded ? 'expanded' : ''} ${isEditing ? 'editing' : ''}`}>
+                      <img
+                        src={q.question_image}
+                        alt="Q"
+                        className="row-thumb"
+                        onClick={() => toggleView(q.id)}
+                        style={{ cursor: 'pointer' }}
+                      />
+                      <div className="row-info">
+                        {q.course && <span className="row-course">{q.course}</span>}
+                        <span className="row-topic">{q.topic}</span>
+                        {q.paper && <span className="row-source">{q.paper}</span>}
+                        {q.question_number && <span className="row-qnum">Q{q.question_number}</span>}
+                        {q.marks && <span className="row-marks">{q.marks}m</span>}
+                        {q.answer_image && <span className="row-has-answer">✓ ans</span>}
+                      </div>
+                      <button
+                        className={`view-btn ${isViewing ? 'active' : ''}`}
+                        onClick={() => toggleView(q.id)}
+                        title={isViewing ? 'Hide images' : 'View images'}
+                      >
+                        {isViewing ? '▾' : '▸'}
+                      </button>
+                      <button
+                        className="edit-btn"
+                        onClick={() => isEditing ? cancelEdit() : startEdit(q)}
+                        title={isEditing ? 'Cancel edit' : 'Edit question'}
+                      >
+                        {isEditing ? '✕' : '✎'}
+                      </button>
+                      <button className="delete-btn" onClick={() => handleDelete(q.id)}>🗑</button>
+                    </div>
+
+                    {/* View panel — show images */}
+                    {isViewing && !isEditing && (
+                      <div className="view-panel">
+                        <div className="view-image-group">
+                          <div className="view-image-label">Question</div>
+                          <img src={q.question_image} alt="Question" className="view-image" />
+                        </div>
+                        {q.answer_image && (
+                          <div className="view-image-group">
+                            <div className="view-image-label">Answer</div>
+                            <img src={q.answer_image} alt="Answer" className="view-image" />
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {/* Inline edit form */}
+                    {isEditing && (
+                      <div className="edit-panel">
+                        <div className="form-group">
+                          <label>Course</label>
+                          <select
+                            value={editForm.course}
+                            onChange={e => setEditForm(f => ({ ...f, course: e.target.value, topic: '' }))}
+                          >
+                            <option value="">Select course…</option>
+                            {Object.keys(courses).map(c => <option key={c} value={c}>{c}</option>)}
+                          </select>
+                        </div>
+
+                        <div className="form-group">
+                          <label>Topic</label>
+                          <select
+                            value={editForm.topic}
+                            onChange={e => setEditForm(f => ({ ...f, topic: e.target.value }))}
+                            disabled={!editForm.course}
+                          >
+                            <option value="">Select topic…</option>
+                            {editTopics.map(t => <option key={t} value={t}>{t}</option>)}
+                          </select>
+                        </div>
+
+                        <div className="form-row">
+                          <div className="form-group">
+                            <label>Paper</label>
+                            <input
+                              type="text"
+                              value={editForm.paper}
+                              onChange={e => setEditForm(f => ({ ...f, paper: e.target.value }))}
+                            />
+                          </div>
+                          <div className="form-group form-group-sm">
+                            <label>Q #</label>
+                            <input
+                              type="number"
+                              min="1"
+                              max="50"
+                              value={editForm.question_number}
+                              onChange={e => setEditForm(f => ({ ...f, question_number: e.target.value }))}
+                            />
+                          </div>
+                          <div className="form-group form-group-sm">
+                            <label>Marks</label>
+                            <input
+                              type="number"
+                              min="1"
+                              max="15"
+                              value={editForm.marks}
+                              onChange={e => setEditForm(f => ({ ...f, marks: e.target.value }))}
+                            />
+                          </div>
+                        </div>
+
+                        <div className="edit-images">
+                          <div className="form-group">
+                            <label>Replace Question Image</label>
+                            <div
+                              className={`drop-zone drop-zone-sm ${editPreviewQ ? 'has-preview' : ''}`}
+                              onClick={() => editQRef.current?.click()}
+                            >
+                              {editPreviewQ ? (
+                                <img src={editPreviewQ} alt="Preview" className="drop-preview" />
+                              ) : (
+                                <div className="drop-placeholder">
+                                  <span className="drop-icon-sm">↑</span>
+                                  <span>Click to replace</span>
+                                </div>
+                              )}
+                            </div>
+                            <input ref={editQRef} type="file" accept="image/*" hidden onChange={e => handleEditFile('question_image', e.target.files[0])} />
+                          </div>
+
+                          <div className="form-group">
+                            <label>Replace Answer Image</label>
+                            <div
+                              className={`drop-zone drop-zone-sm ${editPreviewA ? 'has-preview' : ''}`}
+                              onClick={() => editARef.current?.click()}
+                            >
+                              {editPreviewA ? (
+                                <img src={editPreviewA} alt="Preview" className="drop-preview" />
+                              ) : (
+                                <div className="drop-placeholder">
+                                  <span className="drop-icon-sm">↑</span>
+                                  <span>Click to replace</span>
+                                </div>
+                              )}
+                            </div>
+                            <input ref={editARef} type="file" accept="image/*" hidden onChange={e => handleEditFile('answer_image', e.target.files[0])} />
+                          </div>
+                        </div>
+
+                        <div className="edit-actions">
+                          <button className="save-edit-btn" onClick={handleSaveEdit} disabled={saving}>
+                            {saving ? 'Saving…' : '✓ Save Changes'}
+                          </button>
+                          <button className="cancel-edit-btn" onClick={cancelEdit}>
+                            Cancel
+                          </button>
+                        </div>
+                      </div>
+                    )}
                   </div>
-                  <button className="delete-btn" onClick={() => handleDelete(q.id)}>✕</button>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </div>

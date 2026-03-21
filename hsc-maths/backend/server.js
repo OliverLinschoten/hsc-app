@@ -116,10 +116,13 @@ const COURSES = {
     'Statistical Analysis', 'Networks'
   ],
   'Standard 2': [
-    'Algebra', 'Measurement', 'Financial Mathematics',
-    'Statistical Analysis', 'Networks', 'Probability',
-    'Linear Relationships', 'Non-linear Relationships',
-    'Trigonometry', 'Simultaneous Linear Equations'
+    // Year 11 (assumed knowledge)
+    'Formulae & Equations', 'Linear Relationships', 'Applications of Measurement',
+    'Money Matters', 'Data Analysis', 'Probability', 'Working with Time',
+    // Year 12
+    'Non-linear Relationships', 'Simultaneous Equations', 'Non-Right-Angled Trigonometry',
+    'Rates & Ratios', 'Investments & Loans', 'Annuities', 'Bivariate Data Analysis',
+    'Normal Distribution', 'Network Concepts','Critical Path Analysis'
   ],
   'Advanced': [
     'Functions', 'Trigonometric Functions', 'Calculus',
@@ -412,6 +415,109 @@ app.post('/api/questions', requireAdmin, upload.fields([
     res.status(500).json({ error: 'Database error' });
   }
 });
+
+app.put('/api/questions/:id', requireAdmin, upload.fields([
+  { name: 'question_image', maxCount: 1 },
+  { name: 'answer_image', maxCount: 1 }
+]), async (req, res) => {
+  try {
+    const existing = await pool.query('SELECT * FROM questions WHERE id = $1', [req.params.id]);
+    if (existing.rows.length === 0) {
+      return res.status(404).json({ error: 'Not found' });
+    }
+ 
+    const old = existing.rows[0];
+    const { topic, paper, marks, question_number, course } = req.body;
+ 
+    // If new images uploaded, upload to Cloudinary and delete old ones
+    let question_image = old.question_image;
+    if (req.files?.question_image) {
+      question_image = await uploadToCloudinary(req.files.question_image[0].buffer);
+      if (old.question_image) cloudinary.uploader.destroy(getPublicId(old.question_image));
+    }
+ 
+    let answer_image = old.answer_image;
+    if (req.files?.answer_image) {
+      answer_image = await uploadToCloudinary(req.files.answer_image[0].buffer);
+      if (old.answer_image) cloudinary.uploader.destroy(getPublicId(old.answer_image));
+    }
+ 
+    const result = await pool.query(
+      `UPDATE questions
+       SET topic = $1, paper = $2, marks = $3, question_number = $4, course = $5,
+           question_image = $6, answer_image = $7
+       WHERE id = $8
+       RETURNING *`,
+      [
+        topic || old.topic,
+        paper !== undefined ? paper : old.paper,
+        marks ? parseInt(marks) : old.marks,
+        question_number ? parseInt(question_number) : old.question_number,
+        course || old.course,
+        question_image,
+        answer_image,
+        req.params.id
+      ]
+    );
+ 
+    res.json(result.rows[0]);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Database error' });
+  }
+});
+
+app.put('/api/questions/:id', requireAdmin, upload.fields([
+  { name: 'question_image', maxCount: 1 },
+  { name: 'answer_image', maxCount: 1 }
+]), async (req, res) => {
+  try {
+    const existing = await pool.query('SELECT * FROM questions WHERE id = $1', [req.params.id]);
+    if (existing.rows.length === 0) {
+      return res.status(404).json({ error: 'Not found' });
+    }
+ 
+    const old = existing.rows[0];
+    const { topic, paper, marks, question_number, course } = req.body;
+ 
+    // If new images uploaded, upload to Cloudinary and delete old ones
+    let question_image = old.question_image;
+    if (req.files?.question_image) {
+      question_image = await uploadToCloudinary(req.files.question_image[0].buffer);
+      if (old.question_image) cloudinary.uploader.destroy(getPublicId(old.question_image));
+    }
+ 
+    let answer_image = old.answer_image;
+    if (req.files?.answer_image) {
+      answer_image = await uploadToCloudinary(req.files.answer_image[0].buffer);
+      if (old.answer_image) cloudinary.uploader.destroy(getPublicId(old.answer_image));
+    }
+ 
+    const result = await pool.query(
+      `UPDATE questions
+       SET topic = $1, paper = $2, marks = $3, question_number = $4, course = $5,
+           question_image = $6, answer_image = $7
+       WHERE id = $8
+       RETURNING *`,
+      [
+        topic || old.topic,
+        paper !== undefined ? paper : old.paper,
+        marks ? parseInt(marks) : old.marks,
+        question_number ? parseInt(question_number) : old.question_number,
+        course || old.course,
+        question_image,
+        answer_image,
+        req.params.id
+      ]
+    );
+ 
+    res.json(result.rows[0]);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Database error' });
+  }
+});
+ 
 
 app.delete('/api/questions/:id', requireAdmin, async (req, res) => {
   try {
