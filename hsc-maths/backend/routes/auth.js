@@ -4,6 +4,10 @@ const pool = require('../config/db');
 const express = require('express');
 const router = express.Router();
 
+const bcrypt = require('bcrypt');
+const jwt = require('jsonwebtoken');
+const JWT_SECRET = process.env.JWT_SECRET || 'your-fallback-secret-here';
+
 
 router.post('/register', async (req, res) => {
   try {
